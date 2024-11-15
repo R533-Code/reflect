@@ -1,5 +1,6 @@
-#include "reflect.h"
+#include <clt/reflect.h>
 #include <iostream>
+#include <array>
 
 using namespace clt::meta;
 
@@ -24,6 +25,10 @@ define_template_var(
     (reflect_template_type(typename, T), reflect_template_value(int, b)),
     (static, constexpr), T, Hello, T(3.14) + T(b));
 
+define_template_using(
+    (reflect_template_type(typename, T), reflect_template_value(size_t, V)), Alias,
+    (std::array<T, V>));
+
 int main()
 {
 
@@ -31,8 +36,7 @@ int main()
   define_using(ahello, long double);
 
   PRINT(name_of(reflect_info_of_nt(Hello)));
-  constexpr auto a1 =
-      substitute(reflect_info_of_nt(Hello), reflect_info_of(int), reflect_info_of_const(10));
+  constexpr auto a1 = substitute(reflect_info_of_nt(Hello), reflect_info_of(int), reflect_info_of_const(10));
 
   constexpr auto info = reflect_info_of_nt(hello);
   using a = reflect_type_of(info);
