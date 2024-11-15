@@ -295,19 +295,6 @@
   (clt::meta::Specifier)(                                                  \
       REFLECT_FOR_EACH(__REFL_keyword_to_specifier, __VA_ARGS__)(uint32_t) \
           clt::meta::Specifier::__End_marker)
-#define __REFL_expand_template_argument(x) __REFL_3D_2(x) __REFL_3D_3(x)
-#define __REFL_expand_template_name(x)     __REFL_3D_3(x)
-/// @brief Expand the
-#define __REFL_expand_template_pack(...) \
-  REFLECT_FOR_EACH_COMMA(__REFL_expand_template_argument, __VA_ARGS__)
-/// @brief Expand the names of template tuple pack
-#define __REFL_expand_template_pack_name(...) \
-  REFLECT_FOR_EACH_COMMA(__REFL_expand_template_name, __VA_ARGS__)
-/// @brief Counts the number of argument of a macro.
-/// This result in an expression not a single literal!
-#define __REFL_count(...) REFLECT_FOR_EACH(__REFL_one_plus, __VA_ARGS__) 0
-
-#define __REFL_fn_arguments_to_info()
 
 /// @brief Defines a function type.
 /// @code{.cpp}
@@ -362,13 +349,47 @@
   {                                                                           \
   }
 
+// 0 -> non-type template
+// 1 -> type template
+// 2 -> non-type template pack
+// 3 -> type template pack
+#define __REFL_expand_template_argument(x) \
+  __REFL_CC(__REFL_expand_template_argument, __REFL_3D_1(x))(x)
+#define __REFL_expand_template_argument0(x) __REFL_3D_2(x) __REFL_3D_3(x)
+#define __REFL_expand_template_argument1(x) __REFL_3D_2(x) __REFL_3D_3(x)
+#define __REFL_expand_template_argument3(x) __REFL_3D_2(x)... __REFL_3D_3(x)
+#define __REFL_expand_template_argument4(x) __REFL_3D_2(x)... __REFL_3D_3(x)
+#define __REFL_expand_template_name(x) \
+  __REFL_CC(__REFL_expand_template_name, __REFL_3D_1(x))(x)
+#define __REFL_expand_template_name0(x) __REFL_3D_3(x)
+#define __REFL_expand_template_name1(x) __REFL_3D_3(x)
+#define __REFL_expand_template_name3(x) __REFL_3D_3(x)...
+#define __REFL_expand_template_name4(x) __REFL_3D_3(x)...
+#define __REFL_expand_template_pack(...) \
+  REFLECT_FOR_EACH_COMMA(__REFL_expand_template_argument, __VA_ARGS__)
+/// @brief Expand the names of template tuple pack
+#define __REFL_expand_template_pack_name(...) \
+  REFLECT_FOR_EACH_COMMA(__REFL_expand_template_name, __VA_ARGS__)
+/// @brief Counts the number of argument of a macro.
+/// This result in an expression not a single literal!
+#define __REFL_count(...) REFLECT_FOR_EACH(__REFL_one_plus, __VA_ARGS__) 0
 #define __REFL_expand_template_type_or_value(...) \
   REFLECT_FOR_EACH_COMMA(__REFL_3D_1, __VA_ARGS__)
-#define __REFL_expand_substitute_argument(x) clt::meta::meta_info auto __REFL_3D_3(x)
+#define __REFL_expand_substitute_argument(x) \
+  __REFL_CC(__REFL_expand_substitute_argument, __REFL_3D_1(x))(x)
+#define __REFL_expand_substitute_argument0(x) \
+  clt::meta::meta_info auto __REFL_3D_3(x)
+#define __REFL_expand_substitute_argument1(x) \
+  clt::meta::meta_info auto __REFL_3D_3(x)
+#define __REFL_expand_substitute_argument2(x)   clt::meta::meta_info auto... __REFL_3D_3(x)
+#define __REFL_expand_substitute_argument3(x) \
+  clt::meta::meta_info auto... __REFL_3D_3(x)
 #define __REFL_expand_substitute_arguments(...) \
   REFLECT_FOR_EACH_COMMA(__REFL_expand_substitute_argument, __VA_ARGS__)
 #define __REFL_expand_substitute_value0(x) decltype(__REFL_3D_3(x))::value
 #define __REFL_expand_substitute_value1(x) typename decltype(__REFL_3D_3(x))::type
+#define __REFL_expand_substitute_value2(x) typename decltype(__REFL_3D_3(x))::type...
+#define __REFL_expand_substitute_value3(x) decltype(__REFL_3D_3(x))::value...
 #define __REFL_expand_substitute_value(x) \
   __REFL_CC(__REFL_expand_substitute_value, __REFL_3D_1(x))(x)
 #define __REFL_expand_substitute_values(...) \
@@ -381,15 +402,27 @@
   static_assert(                                                                  \
       !std::same_as<typename decltype(__REFL_3D_3(x))::type, clt::meta::no_type>, \
       "Expected a type template parameter!")
+#define __REFL_expand_assert_value2(x)                                            \
+  static_assert(                                                                  \
+      (!std::same_as<typename decltype(__REFL_3D_3(x))::type, clt::meta::no_type> && ...), \
+      "Expected a type template parameter pack!")
+#define __REFL_expand_assert_value3(x)                                            \
+  static_assert(                                                                  \
+      (!std::same_as<decltype(decltype(__REFL_3D_3(x))::value), clt::meta::no_type> && ...), \
+      "Expected a non-type template parameter pack!")
 #define __REFL_expand_assert_value(x) \
   __REFL_CC(__REFL_expand_assert_value, __REFL_3D_1(x))(x);
 #define __REFL_static_assert_parameters(...) \
   REFLECT_FOR_EACH(__REFL_expand_assert_value, __VA_ARGS__);
 
+/// @brief Creates a non-type template parameter
+#define reflect_template_value(type, name) (0, type, name)
 /// @brief Creates a type template parameter
 #define reflect_template_type(type, name) (1, type, name)
 /// @brief Creates a non-type template parameter
-#define reflect_template_value(type, name) (0, type, name)
+#define reflect_variadic_template_type(type, name) (2, type, name)
+/// @brief Creates a non-type template parameter pack
+#define reflect_variadic_template_value(type, name) (3, type, name)
 
 /// @brief Defines a templated variable
 /// @code{.cpp}
@@ -656,28 +689,30 @@ namespace clt::meta
   {
     _error,
 
-    /// @brief Non-templated method
-    _method,
     /// @brief Non-templated variable
     _var,
     /// @brief Non-templated using
     _alias,
     /// @brief Non-templated function
     _fn,
+    /// @brief Non-templated method
+    _method,
     /// @brief Non-templated type
     _type,
-    /// @brief Templated method
-    _template_method,
+    /// @brief Static Data Member
+    _sdm,
     /// @brief Templated variable
     _template_var,
     /// @brief Templated using
     _template_alias,
     /// @brief Templated function
     _template_fn,
+    /// @brief Templated method
+    _template_method,
     /// @brief Templated type
     _template_type,
-    /// @brief Static Data Member
-    _sdm,
+    /// @brief Templated static data member
+    _template_sdm,
     /// @brief Non-Static Data Member
     _nsdm,
     /// @brief Constant Value
@@ -704,6 +739,8 @@ namespace clt::meta
       return _alias;
     case _template_fn:
       return _fn;
+    case _template_sdm:
+      return _sdm;
     case _template_type:
       return _type;
     default:
@@ -820,6 +857,9 @@ namespace clt::meta
   /// @return True if the entity is marked constexpr
   consteval auto is_constexpr(meta_info_ref auto entity) noexcept -> bool
   {
+    static_assert(
+        is_variable(entity) || is_function(entity),
+        "Expected variable or function information!");
     return (uint32_t) decltype(entity)::current.specifier
            & (uint32_t)Specifier::_constexpr_;
   }
@@ -828,10 +868,7 @@ namespace clt::meta
   /// @return True if the entity has static storage duration
   consteval auto has_static_storage_duration(meta_info_ref auto r) noexcept -> bool
   {
-    static_assert(
-        std::is_pointer_v<decltype(decltype(r)::value)>
-            && !std::is_function_v<decltype(decltype(r)::value)>,
-        "Expected variable information!");
+    static_assert(is_variable(r), "Expected variable information!");
     return (uint32_t) decltype(r)::current.specifier & (uint32_t)Specifier::_static_;
   }
   /// @brief Check if the entity has thread local storage duration.
@@ -840,10 +877,7 @@ namespace clt::meta
   consteval auto has_thread_local_storage_duration(meta_info_ref auto r) noexcept
       -> bool
   {
-    static_assert(
-        std::is_pointer_v<decltype(decltype(r)::value)>
-            && !std::is_function_v<decltype(decltype(r)::value)>,
-        "Expected variable information!");
+    static_assert(is_variable(r), "Expected variable information!");
     return (uint32_t) decltype(r)::current.specifier
            & (uint32_t)Specifier::_thread_local_;
   }
@@ -852,6 +886,10 @@ namespace clt::meta
   consteval auto is_nsdm(meta_info_ref auto entity) noexcept -> bool
   {
     return decltype(entity)::current.kind == Kind::_nsdm;
+  }
+  consteval auto is_sdm(meta_info_ref auto entity) noexcept -> bool
+  {
+    return decltype(entity)::current.kind == Kind::_sdm;
   }
   consteval auto is_namespace(meta_info_ref auto entity) noexcept -> bool
   {
@@ -865,6 +903,10 @@ namespace clt::meta
   {
     return decltype(entity)::current.kind == Kind::_fn;
   }
+  consteval auto is_method(meta_info_ref auto entity) noexcept -> bool
+  {
+    return decltype(entity)::current.kind == Kind::_method;
+  }  
   consteval auto is_static(meta_info_ref auto entity) noexcept -> bool
   {
     return decltype(entity)::current.kind == Kind::_fn;
@@ -887,11 +929,20 @@ namespace clt::meta
     return decltype(entity)::current.kind == _template_fn
            || decltype(entity)::current.kind == _template_var
            || decltype(entity)::current.kind == _template_type
-           || decltype(entity)::current.kind == _template_alias;
+           || decltype(entity)::current.kind == _template_alias
+           || decltype(entity)::current.kind == _template_sdm;
+  }
+  consteval auto is_method_template(meta_info_ref auto entity) noexcept -> bool
+  {
+    return decltype(entity)::current.kind == Kind::_template_method;
   }
   consteval auto is_function_template(meta_info_ref auto entity) noexcept -> bool
   {
     return decltype(entity)::current.kind == Kind::_template_fn;
+  }
+  consteval auto is_sdm_template(meta_info_ref auto entity) noexcept -> bool
+  {
+    return decltype(entity)::current.kind == Kind::_template_sdm;
   }
   consteval auto is_variable_template(meta_info_ref auto entity) noexcept -> bool
   {
@@ -952,9 +1003,6 @@ namespace clt::meta
   template<meta_info_ref... With>
   constexpr auto substitute(template_meta_info_ref auto templ, With... with) noexcept
   {
-    static_assert(
-        decltype(templ)::__Is_Template_Meta_Info == sizeof...(with),
-        "The number of arguments needed to substitute is invalid!");
     return decltype(templ)::substitute(with...);
   }
 
