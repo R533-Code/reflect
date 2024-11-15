@@ -334,7 +334,7 @@
       clt::meta::basic_info{                                                     \
           clt::meta::Kind::_var, []() noexcept { return #name; },                \
           []() noexcept { return std::source_location::current(); },             \
-          (__REFL_or_specifier pack)}>{};
+          (__REFL_or_specifier pack)}>{}
 
 /// @brief Reflect on a constant value
 /// Due to a limitation of local classes, the value must be
@@ -357,14 +357,14 @@
   __REFL_CC(__REFL_expand_template_argument, __REFL_3D_1(x))(x)
 #define __REFL_expand_template_argument0(x) __REFL_3D_2(x) __REFL_3D_3(x)
 #define __REFL_expand_template_argument1(x) __REFL_3D_2(x) __REFL_3D_3(x)
+#define __REFL_expand_template_argument2(x) __REFL_3D_2(x)... __REFL_3D_3(x)
 #define __REFL_expand_template_argument3(x) __REFL_3D_2(x)... __REFL_3D_3(x)
-#define __REFL_expand_template_argument4(x) __REFL_3D_2(x)... __REFL_3D_3(x)
 #define __REFL_expand_template_name(x) \
   __REFL_CC(__REFL_expand_template_name, __REFL_3D_1(x))(x)
 #define __REFL_expand_template_name0(x) __REFL_3D_3(x)
 #define __REFL_expand_template_name1(x) __REFL_3D_3(x)
+#define __REFL_expand_template_name2(x) __REFL_3D_3(x)...
 #define __REFL_expand_template_name3(x) __REFL_3D_3(x)...
-#define __REFL_expand_template_name4(x) __REFL_3D_3(x)...
 #define __REFL_expand_template_pack(...) \
   REFLECT_FOR_EACH_COMMA(__REFL_expand_template_argument, __VA_ARGS__)
 /// @brief Expand the names of template tuple pack
@@ -500,17 +500,35 @@
 ///   return a + b;
 /// }
 /// @endcode
-#define define_template_fn(pack, return_type, name, ...)                           \
+#define define_template_fn(template_pack, pack, return_type, name, ...)                           \
+template<__REFL_expand_template_pack template_pack>                              \
   __REFL_expand_specifier                                                          \
       pack /* as the pack is contained in () this will expand to a macro call */   \
           __REFL_deparen(return_type) name(                                        \
               REFLECT_FOR_EACH_COMMA(__REFL_fn_arguments_expansion, __VA_ARGS__)); \
-  static constexpr auto __REFL_CC(name, __MetaInfo_) =                             \
-      clt::meta::info<decltype(name), &(name)>{                                    \
-          .current = {                                                             \
-              clt::meta::Kind::_fn, []() noexcept { return #name; },               \
-              []() noexcept { return std::source_location::current(); },           \
-              (clt::meta::Specifier)(__REFL_or_specifier pack)}};                  \
+  static constexpr struct __REFL_CC(name, __MetaInfo_Type)                         \
+  {                                                                                \
+    static constexpr bool __Is_Meta_Info            = true;                        \
+    static constexpr size_t __Is_Template_Meta_Info = __REFL_count template_pack;  \
+    static constexpr auto substitute(                                              \
+        __REFL_expand_substitute_arguments template_pack) noexcept                 \
+    {                                                                              \
+      __REFL_static_assert_parameters template_pack constexpr auto ptr =           \
+          value<__REFL_expand_substitute_values template_pack>;                    \
+      return clt::meta::info<                                                      \
+          std::remove_pointer_t<decltype(ptr)>, ptr, current.remove_template()>{}; \
+    }                                                                              \
+    template<__REFL_expand_template_pack template_pack>                            \
+    using type = decltype(name<__REFL_expand_template_pack_name template_pack>);   \
+    template<__REFL_expand_template_pack template_pack>                            \
+    static constexpr auto value =                                                  \
+        &name<__REFL_expand_template_pack_name template_pack>;                     \
+    static constexpr clt::meta::basic_info current = {                             \
+        clt::meta::Kind::_template_fn, []() noexcept { return #name; },           \
+        []() noexcept { return std::source_location::current(); },                 \
+        (__REFL_or_specifier pack)};                                               \
+  } __REFL_CC(name, __MetaInfo_) = {}; \
+template<__REFL_expand_template_pack template_pack>                              \
   __REFL_expand_specifier pack __REFL_deparen(return_type)                         \
       name(REFLECT_FOR_EACH_COMMA(__REFL_fn_arguments_expansion, __VA_ARGS__))
 
@@ -1311,6 +1329,46 @@ define_namespace(_Test_Reflect)
           reflect_info_of_nt(test_template_variable), reflect_info_of(int),
           reflect_info_of_const(10))),
       "is_variable of substitute failed!");
+  //////////////////////////////
+  // FUNCTION TEMPLATE:
+  //////////////////////////////
+  define_template_fn(
+      (reflect_template_type(typename, T), reflect_variadic_template_value(int, b)),
+      (static, constexpr), T, sum)
+  {
+    return (T)(0 + ... + b);
+  }
+  static_assert(
+      clt::meta::name_of(reflect_info_of_nt(_Test_Reflect::sum))
+          == "sum",
+      "name_of funtion template failed!");
+  static_assert(
+      std::same_as<
+          decltype(clt::meta::source_location_of(
+              reflect_info_of_nt(_Test_Reflect::sum))),
+          std::source_location>,
+      "source_location_of function template failed!");
+  static_assert(
+      clt::meta::is_function_template(reflect_info_of_nt(sum)),
+      "is_function_template failed!");
+  static_assert(
+      &clt::meta::entity_ref(clt::meta::substitute(
+          reflect_info_of_nt(sum), reflect_info_of(int), reflect_info_of_const(10),
+          reflect_info_of_const(10)))
+          == &sum<int, 10, 10>,
+      "entity_ref of substitute failed!");
+  static_assert(
+      clt::meta::entity_ref(clt::meta::substitute(
+          reflect_info_of_nt(sum), reflect_info_of(int), reflect_info_of_const(10),
+          reflect_info_of_const(10)))()
+          == 20,
+      "entity_ref of substitute failed!");
+  static_assert(
+      clt::meta::is_function(clt::meta::substitute(
+          reflect_info_of_nt(sum), reflect_info_of(int), reflect_info_of_const(10),
+          reflect_info_of_const(10))),
+      "is_function of substitute failed!");
+
 } // namespace _Test_Reflect
 
 #endif // SELF_TEST_REFLECT

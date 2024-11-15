@@ -31,7 +31,6 @@ define_template_using(
 
 int main()
 {
-
   define_var((static), int, d, 10);
   define_using(ahello, long double);
 
