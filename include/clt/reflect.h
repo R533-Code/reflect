@@ -1478,10 +1478,10 @@ namespace clt::meta
         fn, tuple, std::make_index_sequence<std::tuple_size_v<decltype(tuple)>>{});
   }
 
-  /// @brief Returns a C++-like string representing an information
+  /// @brief Returns a C++-like string representing an information.
   /// @param info The meta-info to convert
   /// @return A C++-like string representing 'info'
-  constexpr std::string_view to_string(meta_info_ref auto info) noexcept
+  consteval std::string_view to_string(meta_info_ref auto info) noexcept
   {
     if constexpr (is_namespace(info))
     {
