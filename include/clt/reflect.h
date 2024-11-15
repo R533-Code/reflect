@@ -50,7 +50,10 @@
 #pragma region UGLY MACROS
 /// @brief Concatenate internal (use __REFL_CC!!)
 #define __REFL_CC2(x, y) x##y
-
+/// @brief Transform a value to a string literal (use __REFL_STR!!)
+#define __REFL_STR2(x) #x
+/// @brief Transform a value to a string literal
+#define __REFL_STR(x) __REFL_STR2(x)
 /// @brief Pair of ()
 #define __DETAILS__REFLECT_PARENS ()
 
@@ -295,6 +298,15 @@
   (clt::meta::Specifier)(                                                  \
       REFLECT_FOR_EACH(__REFL_keyword_to_specifier, __VA_ARGS__)(uint32_t) \
           clt::meta::Specifier::__End_marker)
+#define __REFL_arg_info(x)                                      \
+  clt::meta::info<                                              \
+      __REFL_2D_1(x), clt::meta::no_value,                      \
+      clt::meta::basic_info{                                    \
+          clt::meta::Kind::_var,                                \
+          []() noexcept { return __REFL_STR(__REFL_2D_2(x)); }, \
+          []() noexcept { return std::source_location::current(); }}>
+#define __REFL_args_info(...) \
+  std::tuple<REFLECT_FOR_EACH_COMMA(__REFL_arg_info, __VA_ARGS__)>
 
 /// @brief Defines a function type.
 /// @code{.cpp}
@@ -315,7 +327,9 @@
       clt::meta::basic_info{                                                       \
           clt::meta::Kind::_fn, []() noexcept { return #name; },                   \
           []() noexcept { return std::source_location::current(); },               \
-          (clt::meta::Specifier)(__REFL_or_specifier pack)}>{};                    \
+          (clt::meta::Specifier)(__REFL_or_specifier pack)},                       \
+      clt::meta::basic_info{},                                                     \
+      __REFL_args_info((return_type, <return>), __VA_ARGS__)>{};                   \
   __REFL_expand_specifier pack __REFL_deparen(return_type)                         \
       name(REFLECT_FOR_EACH_COMMA(__REFL_fn_arguments_expansion, __VA_ARGS__))
 
@@ -561,6 +575,12 @@
 
 namespace clt::meta
 {
+  template<typename T, typename... Ts>
+  consteval auto tuple_without_1st(const std::tuple<T, Ts...>&)
+  {
+    return std::tuple<Ts...>{};
+  }
+
   /// @brief Creates a copy of the value passed to the function.
   /// This is used to always return a copy of an info type inside of reflect_* macros.
   /// @param value The value to copy
@@ -826,7 +846,7 @@ namespace clt::meta
   /// @tparam V The address/value reflected on (or no_value)
   template<
       typename T, auto V, basic_info CURRENT, basic_info ALIAS = basic_info{},
-      auto ARGS = no_value>
+      typename ARGS = no_type>
   struct info
   {
     /// @brief The type represented by the info or 'no_type'
@@ -838,7 +858,7 @@ namespace clt::meta
     /// @brief This field is only useful if
     static constexpr auto alias_info = ALIAS;
     /// @brief The arguments informations for functions
-    static constexpr auto arguments_info = ARGS;
+    using arguments_type = ARGS;
     /// @brief Helper to detect a valid info
     static constexpr bool __Is_Meta_Info = true;
   };
@@ -983,7 +1003,7 @@ namespace clt::meta
   /// @brief Returns the name of the entity
   /// @param entity The entity
   /// @return The name of the entity
-  consteval auto name_of(meta_info_ref auto entity) noexcept -> std::string_view
+  constexpr auto name_of(meta_info_ref auto entity) noexcept -> std::string_view
   {
     return decltype(entity)::current.name_of();
   }
@@ -991,7 +1011,7 @@ namespace clt::meta
   /// @brief Returns the source location of an entity
   /// @param entity The entity
   /// @return The source location of the entity
-  consteval auto source_location_of(meta_info_ref auto entity) noexcept
+  constexpr auto source_location_of(meta_info_ref auto entity) noexcept
       -> std::source_location
   {
     return decltype(entity)::current.src();
@@ -1028,7 +1048,7 @@ namespace clt::meta
     return decltype(templ)::substitute(with...);
   }
 
-  /// @brief Returns a reference to the value represented by
+  /// @brief Returns a reference to the value represented by a variable or function
   /// @param var_or_func The variable or function to which to obtain a reference
   /// @return Reference to the variable or function
   constexpr auto& entity_ref(meta_info_ref auto var_or_func) noexcept
@@ -1038,6 +1058,24 @@ namespace clt::meta
         "Expected variable or function information!");
     return *decltype(var_or_func)::value;
   }
+
+  /// @brief Returns a tuple of information representing the arguments of a function
+  /// @param func The function's information
+  /// @return Tuple of the information representing the arguments of a function
+  consteval auto arguments_of(meta_info_ref auto func) noexcept
+  {
+    static_assert(is_function(func), "Expected function information!");
+    return tuple_without_1st(typename decltype(func)::arguments_type{});
+  }
+  /// @brief Returns the information representing the return type of a function
+  /// @param func The function's information
+  /// @return Information representing the return of a function
+  consteval auto return_of(meta_info_ref auto func) noexcept
+  {
+    static_assert(is_function(func), "Expected function information!");
+    return std::get<0>(typename decltype(func)::arguments_type{});
+  }
+
   /// @brief Returns the value of a constant value
   /// @param constant_expr The constant value
   /// @return The value
@@ -1379,5 +1417,56 @@ define_namespace(_Test_Reflect)
 
 #endif // SELF_TEST_REFLECT
 #pragma endregion
+
+namespace clt::meta
+{
+  // PREDEFINED META FUNCTIONS:
+
+  namespace details
+  {
+    template<meta_info_ref... Ts, size_t... Index>
+    constexpr auto tupled(
+        meta_info_ref auto fn, const std::tuple<Ts...>& tuple,
+        std::index_sequence<Index...>) noexcept
+    {
+      using Info = decltype(fn);
+      return +[](const std::tuple<type_of<Ts>...>& tuple)
+      { return entity_ref(Info{})(std::get<Index>(tuple)...); };
+    }
+
+    template<typename Callable, meta_info... Args, size_t... Index>
+    constexpr void for_each(
+        const std::tuple<Args...>& arg, Callable&& callable,
+        std::index_sequence<Index...>)
+    {
+      (callable(std::get<Index>(arg)), ...);
+    }
+  } // namespace details
+
+  /// @brief Returns the same function as 'fn' with the difference that all the arguments are passed as
+  /// a single tuple.
+  /// @param fn The function information from which to generate the new function
+  /// @return Function that takes all the arguments
+  constexpr auto tupled(meta_info_ref auto fn) noexcept
+  {
+    static_assert(is_function(fn), "Expected a function!");
+    constexpr auto tuple = arguments_of(fn);
+    return details::tupled(
+        fn, tuple, std::make_index_sequence<std::tuple_size_v<decltype(tuple)>>{});
+  }
+
+  /// @brief Applies a lambda for each information in a tuple
+  /// @tparam Callable The lambda to apply on each members of the tuple
+  /// @tparam ...Args The tuple arguments
+  /// @param tuple The tuple whose members to pass to 'callable'
+  /// @param callable The lambda to apply on each member of 'tuple'
+  template<typename Callable, meta_info... Args>
+  constexpr void for_each(const std::tuple<Args...>& tuple, Callable&& callable)
+  {
+    details::for_each(
+        tuple, std::forward<Callable>(callable),
+        std::make_index_sequence<sizeof...(Args)>{});
+  }
+} // namespace clt::meta
 
 #endif // !HG_REFLECT__
