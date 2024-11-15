@@ -22,8 +22,8 @@ define_fn((static, constexpr), int, hello, (int, a), (int, b))
 #define PRINT(name) std::cout << #name << ": " << (name) << '\n'
 
 define_template_var(
-    (reflect_template_type(typename, T), reflect_template_value(int, b)),
-    (static, constexpr), T, Hello, T(3.14) + T(b));
+    (reflect_template_type(typename, T), reflect_variadic_template_value(int, b)),
+    (static, constexpr), T, Hello, T(3.14) + T((0 + ... + b)));
 
 define_template_using(
     (reflect_template_type(typename, T), reflect_template_value(size_t, V)), Alias,
@@ -36,12 +36,13 @@ int main()
   define_using(ahello, long double);
 
   PRINT(name_of(reflect_info_of_nt(Hello)));
-  constexpr auto a1 = substitute(reflect_info_of_nt(Hello), reflect_info_of(int), reflect_info_of_const(10));
-
+  constexpr auto a1 = substitute(
+      reflect_info_of_nt(Hello), reflect_info_of(int), reflect_info_of_const(10),
+      reflect_info_of_const(10), reflect_info_of_const(100));
+  PRINT(entity_ref(a1));
   constexpr auto info = reflect_info_of_nt(hello);
-  using a = reflect_type_of(info);
   PRINT(name_of(entity_of(reflect_info_of(ahello*****))));
-  std::cout << (entity_ref(info)(10, 20));
+  std::cout << (entity_ref(info)(10, 20)) << '\n';
   PRINT(name_of(info));
   constexpr auto info2 = reflect_info_of_nt(test);
   PRINT_NAME(ahello);
