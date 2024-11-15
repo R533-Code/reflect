@@ -15,9 +15,12 @@ define_fn((static, constexpr), int, hello, (int, a), (int, b))
 
 int main()
 {
+  define_using(u28, uint32_t);
+
   constexpr auto info_hello = reflect_info_of_nt(hello);
-  tupled(info_hello)(std::tuple{10, 20});
+  to_tupled(info_hello)(std::tuple{10, 20});
   PRINT(name_of(reflect_info_of_nt(hello)));
+  PRINT(to_string(reflect_info_of_nt(u28)));
   constexpr auto hello_args = clt::meta::arguments_of(info_hello);
   for_each(hello_args, [](auto&& a) noexcept {
         std::cout << clt::meta::name_of(reflect_info_of(reflect_type_of(a))) << ' '
