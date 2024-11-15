@@ -1195,30 +1195,49 @@ namespace clt::meta
       ++str;
     return str - cpy;
   }
-} // namespace clt::meta
 
-/// @brief Static storage used by __MetaInfo_Get for pointer types. Do not use elsewhere!
-/// This would not be needed in C++23 as static constexpr inside of functions will
-/// be valid.
-/// @tparam T The type without pointers
-template<typename T>
-static constexpr auto __MetaInfo_Get_static =
-    __MetaInfo_Get(std::add_pointer_t<std::add_const_t<typename T::type>>{});
-template<typename T>
-static constexpr auto __MetaInfo_GetNameArray = []()
-{
-  using type            = decltype(__MetaInfo_Get(
-      std::add_pointer_t<std::add_const_t<typename T::type>>{}));
-  constexpr size_t size = clt::meta::const_strlen(type::current.name_of());
-  std::array<char, size + 1> array;
-  for (size_t i = 0; i < size; i++)
-    array[i] = type::current.name_of()[i];
-  array[size] = '\0';
-  return array;
-}();
-template<typename T>
-static constexpr clt::meta::string_view __MetaInfo_GetNameOf = {
-    __MetaInfo_GetNameArray<T>.data(), __MetaInfo_GetNameArray<T>.size() - 1};
+  namespace details
+  {
+    /// @brief Static storage used by __MetaInfo_Get for pointer types. Do not use elsewhere!
+    /// This would not be needed in C++23 as static constexpr inside of functions will
+    /// be valid.
+    /// @tparam T The type without pointers
+    template<typename T>
+    static constexpr auto static_meta_info_of =
+        __MetaInfo_Get(std::add_pointer_t<std::add_const_t<typename T::type>>{});
+
+    template<clt::meta::meta_info type>
+    static constexpr auto static_name_array = []()
+    {
+      constexpr size_t size = clt::meta::const_strlen(type::current.name_of());
+      std::array<char, size + 1> array;
+      for (size_t i = 0; i < size; i++)
+        array[i] = type::current.name_of()[i];
+      array[size] = '\0';
+      return array;
+    }();
+
+    template<clt::meta::meta_info T>
+    static constexpr clt::meta::string_view static_name_of = {
+        static_name_array<T>.data(), static_name_array<T>.size() - 1};
+
+    template<auto STR_PRODUCER>
+    static constexpr auto static_name_producer_array = []()
+    {
+      constexpr size_t size = clt::meta::const_strlen(STR_PRODUCER());
+      std::array<char, size + 1> array;
+      for (size_t i = 0; i < size; i++)
+        array[i] = STR_PRODUCER()[i];
+      array[size] = '\0';
+      return array;
+    }();
+
+    template<auto STR_PRODUCER>
+    static constexpr clt::meta::string_view static_name_producer_of = {
+        static_name_producer_array<STR_PRODUCER>.data(),
+        static_name_producer_array<STR_PRODUCER>.size() - 1};
+  } // namespace details
+} // namespace clt::meta
 
 /// @brief Returns the meta information of a pointer to a type with informations.
 /// This needs to be in the global namespace to be the last functions checked
@@ -1231,25 +1250,27 @@ template<clt::meta::pointer_reflectable Ty>
 constexpr auto __MetaInfo_Get(Ty)
 {
   using namespace clt::meta;
+  using namespace clt::meta::details;
   using pointer_c = remove_all_pointers<Ty>;
 
-  using type_ = typename decltype(__MetaInfo_Get_static<pointer_c>)::type;
-  constexpr auto& name_array = __MetaInfo_GetNameOf<pointer_c>;
+  using info_                = decltype(static_meta_info_of<pointer_c>);
+  using type_                = typename info_::type;
+  constexpr auto& name_array = static_name_of<info_>;
   return info<
       add_N_pointers_t<typename pointer_c::type, pointer_c::value - 1>,
       clt::meta::no_value,
       basic_info{
           .kind = Kind::_type,
-          // Add missing pointers to type name
           .name_of =
               []() noexcept
           {
+            // Add missing pointers to type name
             return join_strv<
-                       __MetaInfo_GetNameOf<pointer_c>,
+                       static_name_of<info_>,
                        multiply_char<pointer_c::value - 1, '*'>::value>::value
                 .data();
           },
-          .src = decltype(__MetaInfo_Get_static<pointer_c>)::current.src}>{};
+          .src = decltype(static_meta_info_of<pointer_c>)::current.src}>{};
 }
 
 /// @brief static_assert with an error.
@@ -1429,7 +1450,9 @@ namespace clt::meta
         meta_info_ref auto fn, const std::tuple<Ts...>& tuple,
         std::index_sequence<Index...>) noexcept
     {
+      // To propagate info to lambda, we make use of types
       using Info = decltype(fn);
+      // + to decay lambda into pointer
       return +[](const std::tuple<type_of<Ts>...>& tuple)
       { return entity_ref(Info{})(std::get<Index>(tuple)...); };
     }
@@ -1447,12 +1470,35 @@ namespace clt::meta
   /// a single tuple.
   /// @param fn The function information from which to generate the new function
   /// @return Function that takes all the arguments
-  constexpr auto tupled(meta_info_ref auto fn) noexcept
+  constexpr auto to_tupled(meta_info_ref auto fn) noexcept
   {
     static_assert(is_function(fn), "Expected a function!");
     constexpr auto tuple = arguments_of(fn);
     return details::tupled(
         fn, tuple, std::make_index_sequence<std::tuple_size_v<decltype(tuple)>>{});
+  }
+
+  /// @brief Returns a C++-like string representing an information
+  /// @param info The meta-info to convert
+  /// @return A C++-like string representing 'info'
+  constexpr std::string_view to_string(meta_info_ref auto info) noexcept
+  {
+    if constexpr (is_namespace(info))
+    {
+      return join_strv<
+          details::static_name_producer_of<[]() { return "namespace "; }>,
+          details::static_name_of<decltype(info)>>::value;
+    }
+    else if constexpr (is_alias(info))
+    {
+      return join_strv<
+          details::static_name_producer_of<[]() { return "using "; }>,
+          details::static_name_of<decltype(info)>,
+          details::static_name_producer_of<[]() { return " = "; }>,
+          details::static_name_of<decltype(entity_of(decltype(info){}))>>::value;
+    }
+    else
+      static_assert(always_false<decltype(info)>, "Not implemented!");
   }
 
   /// @brief Applies a lambda for each information in a tuple
