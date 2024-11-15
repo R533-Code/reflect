@@ -325,16 +325,17 @@
 /// // same as: static constexpr auto hello = 42;
 /// define_var((static, constexpr), auto, hello, 42);
 /// @endcode
-#define define_var(pack, type, name, value)                                      \
-  __REFL_expand_specifier                                                        \
-      pack /* as the pack is contained in () this will expand to a macro call */ \
-          __REFL_deparen(type) name = value;                                     \
-  static constexpr auto __REFL_CC(name, __MetaInfo_) = clt::meta::info<          \
-      decltype(name), &(name),                                                   \
-      clt::meta::basic_info{                                                     \
-          clt::meta::Kind::_var, []() noexcept { return #name; },                \
-          []() noexcept { return std::source_location::current(); },             \
-          (__REFL_or_specifier pack)}>{}
+#define define_var(pack, type, name, value)                                         \
+  __REFL_expand_specifier                                                           \
+      pack /* as the pack is contained in () this will expand to a macro call */    \
+          __REFL_deparen(type) name                  = value;                       \
+  static constexpr auto __REFL_CC(name, __MetaInfo_) = clt::meta::info<             \
+      decltype(name), &(name),                                                      \
+      clt::meta::basic_info{                                                        \
+          clt::meta::Kind::_var, []() noexcept { return #name; }, []() noexcept     \
+          { return std::source_location::current(); }, (__REFL_or_specifier pack)}> \
+  {                                                                                 \
+  }
 
 /// @brief Reflect on a constant value
 /// Due to a limitation of local classes, the value must be
@@ -381,7 +382,8 @@
   clt::meta::meta_info auto __REFL_3D_3(x)
 #define __REFL_expand_substitute_argument1(x) \
   clt::meta::meta_info auto __REFL_3D_3(x)
-#define __REFL_expand_substitute_argument2(x)   clt::meta::meta_info auto... __REFL_3D_3(x)
+#define __REFL_expand_substitute_argument2(x) \
+  clt::meta::meta_info auto... __REFL_3D_3(x)
 #define __REFL_expand_substitute_argument3(x) \
   clt::meta::meta_info auto... __REFL_3D_3(x)
 #define __REFL_expand_substitute_arguments(...) \
@@ -404,11 +406,13 @@
       "Expected a type template parameter!")
 #define __REFL_expand_assert_value2(x)                                            \
   static_assert(                                                                  \
-      (!std::same_as<typename decltype(__REFL_3D_3(x))::type, clt::meta::no_type> && ...), \
+      (!std::same_as<typename decltype(__REFL_3D_3(x))::type, clt::meta::no_type> \
+       && ...),                                                                   \
       "Expected a type template parameter pack!")
-#define __REFL_expand_assert_value3(x)                                            \
-  static_assert(                                                                  \
-      (!std::same_as<decltype(decltype(__REFL_3D_3(x))::value), clt::meta::no_type> && ...), \
+#define __REFL_expand_assert_value3(x)                                              \
+  static_assert(                                                                    \
+      (!std::same_as<decltype(decltype(__REFL_3D_3(x))::value), clt::meta::no_type> \
+       && ...),                                                                     \
       "Expected a non-type template parameter pack!")
 #define __REFL_expand_assert_value(x) \
   __REFL_CC(__REFL_expand_assert_value, __REFL_3D_1(x))(x);
@@ -500,8 +504,8 @@
 ///   return a + b;
 /// }
 /// @endcode
-#define define_template_fn(template_pack, pack, return_type, name, ...)                           \
-template<__REFL_expand_template_pack template_pack>                              \
+#define define_template_fn(template_pack, pack, return_type, name, ...)            \
+  template<__REFL_expand_template_pack template_pack>                              \
   __REFL_expand_specifier                                                          \
       pack /* as the pack is contained in () this will expand to a macro call */   \
           __REFL_deparen(return_type) name(                                        \
@@ -524,11 +528,11 @@ template<__REFL_expand_template_pack template_pack>                             
     static constexpr auto value =                                                  \
         &name<__REFL_expand_template_pack_name template_pack>;                     \
     static constexpr clt::meta::basic_info current = {                             \
-        clt::meta::Kind::_template_fn, []() noexcept { return #name; },           \
+        clt::meta::Kind::_template_fn, []() noexcept { return #name; },            \
         []() noexcept { return std::source_location::current(); },                 \
         (__REFL_or_specifier pack)};                                               \
-  } __REFL_CC(name, __MetaInfo_) = {}; \
-template<__REFL_expand_template_pack template_pack>                              \
+  } __REFL_CC(name, __MetaInfo_) = {};                                             \
+  template<__REFL_expand_template_pack template_pack>                              \
   __REFL_expand_specifier pack __REFL_deparen(return_type)                         \
       name(REFLECT_FOR_EACH_COMMA(__REFL_fn_arguments_expansion, __VA_ARGS__))
 
@@ -924,7 +928,7 @@ namespace clt::meta
   consteval auto is_method(meta_info_ref auto entity) noexcept -> bool
   {
     return decltype(entity)::current.kind == Kind::_method;
-  }  
+  }
   consteval auto is_static(meta_info_ref auto entity) noexcept -> bool
   {
     return decltype(entity)::current.kind == Kind::_fn;
@@ -1143,6 +1147,9 @@ namespace clt::meta
   template<typename T>
   concept pointer_reflectable = reflectable<T> && (std::is_pointer_v<T>);
 
+  /// @brief Computes the string length of a NUL-terminated string
+  /// @param str The string whose size to return
+  /// @return The string length (not including the NUL-terminator)
   consteval size_t const_strlen(const char* str) noexcept
   {
     auto cpy = str;
@@ -1222,6 +1229,7 @@ constexpr auto __MetaInfo_Get(Ty)
   return {};
 }
 
+#pragma region TESTS
 // If REFLECT_NO_SELF_TEST is not defined, some checks are run
 // to ensure that the library is working correctly.
 #ifndef REFLECT_NO_SELF_TEST
@@ -1288,8 +1296,7 @@ define_namespace(_Test_Reflect)
       "name_of primitive type failed!");
   static_assert(
       std::same_as<
-          decltype(clt::meta::source_location_of(
-              reflect_info_of(int32_t))),
+          decltype(clt::meta::source_location_of(reflect_info_of(int32_t))),
           std::source_location>,
       "source_location_of primitive type failed!");
 
@@ -1339,8 +1346,7 @@ define_namespace(_Test_Reflect)
     return (T)(0 + ... + b);
   }
   static_assert(
-      clt::meta::name_of(reflect_info_of_nt(_Test_Reflect::sum))
-          == "sum",
+      clt::meta::name_of(reflect_info_of_nt(_Test_Reflect::sum)) == "sum",
       "name_of funtion template failed!");
   static_assert(
       std::same_as<
@@ -1372,5 +1378,6 @@ define_namespace(_Test_Reflect)
 } // namespace _Test_Reflect
 
 #endif // SELF_TEST_REFLECT
+#pragma endregion
 
 #endif // !HG_REFLECT__
