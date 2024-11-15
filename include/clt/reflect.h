@@ -211,18 +211,11 @@
 
 #pragma endregion
 
+#pragma region DEFINE_MACROS
 /// @brief If x is wrapped in parenthesis, removes them
 #define __REFL_deparen(x) __REFL_ESC(__REFL_ISH x)
 /// @brief Add at the end of a macro to require a semicolon
 #define __REFL_macro_needs_semicolon() static_assert(true)
-/// @brief Assert at compile time
-#define __REFL_consteval_assert(condition, message) \
-  do                                                \
-  {                                                 \
-    if (std::is_constant_evaluated())               \
-      if (!(condition))                             \
-        clt::meta::assert_fail();                   \
-  } while (0)
 
 /// @brief Creates a using declaration.
 /// @code{.cpp}
@@ -235,7 +228,7 @@
       clt::meta::basic_info{                                                  \
           .kind    = clt::meta::Kind::_alias,                                 \
           .name_of = []() noexcept { return #name; },                         \
-          .src     = []() noexcept { return std::source_location::current(); } }, \
+          .src     = []() noexcept { return std::source_location::current(); }},  \
       decltype(__MetaInfo_Get(static_cast<value*>(nullptr)))::current>        \
   {                                                                           \
   }
@@ -257,28 +250,28 @@
   static constexpr auto __REFL_CC(name, __MetaInfo_) = clt::meta::info<  \
       clt::meta::no_type, clt::meta::no_value,                           \
       clt::meta::basic_info{                                             \
-          clt::meta::Kind::_namespace, []() noexcept { return #name; }, \
-          []() noexcept { return std::source_location::current();} }>{};                           \
+          clt::meta::Kind::_namespace, []() noexcept { return #name; },  \
+          []() noexcept { return std::source_location::current(); }}>{}; \
   namespace name
 
 /// @brief Defines a primitive type (which does not have any members)
-#define define_primitive_type(name)                                      \
-  static_assert(                                                         \
-      !std::is_const_v<name> && !std::is_volatile_v<name>                \
-          && !std::is_reference_v<name>,                                 \
-      "Argument of define_primitive_type must not be cvref qualified!"); \
-  constexpr auto __MetaInfo_Reflectable(const name*) -> bool             \
-  {                                                                      \
-    return true;                                                         \
-  }                                                                      \
-  constexpr auto __MetaInfo_Get(const name*)                             \
-  {                                                                      \
-    return clt::meta::info<                                              \
-        name, clt::meta::no_value,                                       \
-        clt::meta::basic_info{                                           \
-            .kind    = clt::meta::Kind::_type,                           \
-            .name_of = []() noexcept { return #name; },        \
-            .src     = []() noexcept { return std::source_location::current(); }}>{};                  \
+#define define_primitive_type(name)                                               \
+  static_assert(                                                                  \
+      !std::is_const_v<name> && !std::is_volatile_v<name>                         \
+          && !std::is_reference_v<name>,                                          \
+      "Argument of define_primitive_type must not be cvref qualified!");          \
+  constexpr auto __MetaInfo_Reflectable(const name*) -> bool                      \
+  {                                                                               \
+    return true;                                                                  \
+  }                                                                               \
+  constexpr auto __MetaInfo_Get(const name*)                                      \
+  {                                                                               \
+    return clt::meta::info<                                                       \
+        name, clt::meta::no_value,                                                \
+        clt::meta::basic_info{                                                    \
+            .kind    = clt::meta::Kind::_type,                                    \
+            .name_of = []() noexcept { return #name; },                           \
+            .src     = []() noexcept { return std::source_location::current(); }}>{}; \
   }
 
 /// @brief Identity function (which returns its argument)
@@ -333,8 +326,8 @@
   static constexpr auto __REFL_CC(name, __MetaInfo_) = clt::meta::info<            \
       decltype(name), &(name),                                                     \
       clt::meta::basic_info{                                                       \
-          clt::meta::Kind::_fn, []() noexcept { return #name; },                  \
-          []() noexcept { return std::source_location::current(); },                                         \
+          clt::meta::Kind::_fn, []() noexcept { return #name; },                   \
+          []() noexcept { return std::source_location::current(); },               \
           (clt::meta::Specifier)(__REFL_or_specifier pack)}>{};                    \
   __REFL_expand_specifier pack __REFL_deparen(return_type)                         \
       name(REFLECT_FOR_EACH_COMMA(__REFL_fn_arguments_expansion, __VA_ARGS__))
@@ -349,30 +342,24 @@
   __REFL_expand_specifier                                                        \
       pack /* as the pack is contained in () this will expand to a macro call */ \
           __REFL_deparen(type) name = value;                                     \
-  static_assert(/* inside_function => must be static */                          \
-                !clt::meta::is_inside_function()                                 \
-                    || ((__REFL_or_specifier pack)                               \
-                            == (__REFL_or_specifier(static, constexpr))          \
-                        || (__REFL_or_specifier pack)                            \
-                               == (__REFL_or_specifier(static))),                \
-                "Cannot capture information of automatic variable! "             \
-                "Only static or static constexpr for variable in functions!");   \
   static constexpr auto __REFL_CC(name, __MetaInfo_) = clt::meta::info<          \
       decltype(name), &(name),                                                   \
       clt::meta::basic_info{                                                     \
-          clt::meta::Kind::_var, []() noexcept { return #name; },               \
-          []() noexcept { return std::source_location::current(); }, (__REFL_or_specifier pack)}>{};
+          clt::meta::Kind::_var, []() noexcept { return #name; },                \
+          []() noexcept { return std::source_location::current(); },             \
+          (__REFL_or_specifier pack)}>{};
 
 /// @brief Reflect on a constant value
 /// Due to a limitation of local classes, the value must be
 /// a literal type that can be passed as a template parameter
-#define reflect_info_of_const(value)                                           \
-  clt::meta::info<                                                             \
-      decltype(value), value,                                                  \
-      clt::meta::basic_info{                                                   \
-          clt::meta::Kind::_constant_value, []() noexcept { return #value; },    \
-          []() noexcept { return std::source_location::current(); }, clt::meta::Specifier::_constexpr_}> \
-  {                                                                            \
+#define reflect_info_of_const(value)                                          \
+  clt::meta::info<                                                            \
+      decltype(value), value,                                                 \
+      clt::meta::basic_info{                                                  \
+          clt::meta::Kind::_constant_value, []() noexcept { return #value; }, \
+          []() noexcept { return std::source_location::current(); },          \
+          clt::meta::Specifier::_constexpr_}>                                 \
+  {                                                                           \
   }
 
 #define __REFL_expand_template_type_or_value(...) \
@@ -435,8 +422,9 @@
     static constexpr auto value =                                                  \
         &name<__REFL_expand_template_pack_name template_pack>;                     \
     static constexpr clt::meta::basic_info current = {                             \
-        clt::meta::Kind::_template_var, []() noexcept { return #name; },          \
-        []() noexcept { return std::source_location::current(); }, (__REFL_or_specifier pack)};              \
+        clt::meta::Kind::_template_var, []() noexcept { return #name; },           \
+        []() noexcept { return std::source_location::current(); },                 \
+        (__REFL_or_specifier pack)};                                               \
   } __REFL_CC(name, __MetaInfo_) = {}
 
 /// @brief Defines a templated using.
@@ -466,8 +454,8 @@
     template<__REFL_expand_template_pack template_pack>                           \
     static constexpr auto value                    = clt::meta::no_value;         \
     static constexpr clt::meta::basic_info current = {                            \
-        clt::meta::Kind::_template_alias, []() noexcept { return #name; },       \
-        []() noexcept { return std::source_location::current(); }};                                         \
+        clt::meta::Kind::_template_alias, []() noexcept { return #name; },        \
+        []() noexcept { return std::source_location::current(); }};               \
   } __REFL_CC(name, __MetaInfo_) = {}
 
 /// @brief Defines a function type.
@@ -487,8 +475,8 @@
   static constexpr auto __REFL_CC(name, __MetaInfo_) =                             \
       clt::meta::info<decltype(name), &(name)>{                                    \
           .current = {                                                             \
-              clt::meta::Kind::_fn, []() noexcept { return #name; },              \
-              []() noexcept { return std::source_location::current(); },                                     \
+              clt::meta::Kind::_fn, []() noexcept { return #name; },               \
+              []() noexcept { return std::source_location::current(); },           \
               (clt::meta::Specifier)(__REFL_or_specifier pack)}};                  \
   __REFL_expand_specifier pack __REFL_deparen(return_type)                         \
       name(REFLECT_FOR_EACH_COMMA(__REFL_fn_arguments_expansion, __VA_ARGS__))
@@ -514,6 +502,8 @@
 /// @brief Returns the type of any other reflectable construct
 #define reflect_info_of_nt(name) clt::meta::copy(__REFL_CC(name, __MetaInfo_))
 
+#pragma endregion
+
 namespace clt::meta
 {
   /// @brief Creates a copy of the value passed to the function.
@@ -525,74 +515,12 @@ namespace clt::meta
     return value;
   }
 
-  /// @brief Check if the location of the function call is inside of a function body (or a method).
-  /// This method makes use of source_location.function_name. It is not really
-  /// guaranteed to be portable, but it appears to work for MSVC, Clang and GCC.
-  /// @param loc The location from which to draw the information
-  /// @return True if the call to is_inside_function was done inside of a function
-  consteval bool is_inside_function(
-      const std::source_location& loc = std::source_location::current())
-  {
-    // This is not really guaranteed to be portable, but it appears
-    // that MSVC, Clang and GCC all output an empty string if outside of a function.
-    return std::string_view{loc.function_name()}.find('(') != std::string_view::npos;
-  }
-
   /// @brief Represents the absence of type
   struct no_type
   {
   };
   /// @brief Represents the absence of a value
   static constexpr no_type no_value = no_type{};
-
-  /// @brief Source location (of structural type).
-  /// Source location class with members public to allow
-  /// usage in non-type template arguments.
-  struct source_location
-  {
-    /// @brief The line number
-    uint_least32_t line_{};
-    /// @brief The column number
-    uint_least32_t column_{};
-    /// @brief The file name
-    const char* file_name_{};
-    /// @brief The function name
-    const char* function_name_{};
-
-    constexpr source_location() noexcept                                  = default;
-    constexpr source_location(source_location&&) noexcept                 = default;
-    constexpr source_location(const source_location&) noexcept            = default;
-    constexpr source_location& operator=(source_location&&) noexcept      = default;
-    constexpr source_location& operator=(const source_location&) noexcept = default;
-    /// @brief Constructor
-    /// @param loc The source location to copy
-    constexpr source_location(const std::source_location& loc) noexcept
-        : line_(loc.line())
-        , column_(loc.column())
-        , file_name_(loc.file_name())
-        , function_name_(loc.function_name())
-    {
-    }
-
-    /// @brief The line number
-    /// @return The line number
-    constexpr uint_least32_t line() const noexcept { return line_; }
-    /// @brief The column number
-    /// @return The column number
-    constexpr uint_least32_t column() const noexcept { return column_; }
-    /// @brief The file name
-    /// @return The file name
-    constexpr const char* file_name() const noexcept { return file_name_; }
-    /// @brief The function name
-    /// @return The function name
-    constexpr const char* function_name() const noexcept { return function_name_; }
-  };
-
-  /// @brief Function used to cause compilation errors in constant evaluation
-  void assert_fail()
-  {
-    // function does nothing
-  }
 
   /// @brief string view (of structural type).
   /// Simplified string view class with members public to allow
@@ -991,7 +919,7 @@ namespace clt::meta
   /// @param entity The entity
   /// @return The source location of the entity
   consteval auto source_location_of(meta_info_ref auto entity) noexcept
-      -> source_location
+      -> std::source_location
   {
     return decltype(entity)::current.src();
   }
@@ -1043,9 +971,9 @@ namespace clt::meta
   /// @brief Returns the value of a constant value
   /// @param constant_expr The constant value
   /// @return The value
-  constexpr auto value_of(meta_info_ref auto constant_expr) noexcept
+  consteval auto value_of(meta_info_ref auto constant_expr) noexcept
   {
-    __REFL_consteval_assert(
+    static_assert(
         is_value(constant_expr),
         "Expected a constant value (created using reflect_info_of_const)!");
     return decltype(constant_expr)::value;
@@ -1166,7 +1094,8 @@ template<typename T>
 static constexpr auto __MetaInfo_Get_static =
     __MetaInfo_Get(std::add_pointer_t<std::add_const_t<typename T::type>>{});
 template<typename T>
-static constexpr auto __MetaInfo_GetNameArray = [](){
+static constexpr auto __MetaInfo_GetNameArray = []()
+{
   using type            = decltype(__MetaInfo_Get(
       std::add_pointer_t<std::add_const_t<typename T::type>>{}));
   constexpr size_t size = clt::meta::const_strlen(type::current.name_of());
@@ -1175,9 +1104,10 @@ static constexpr auto __MetaInfo_GetNameArray = [](){
     array[i] = type::current.name_of()[i];
   array[size] = '\0';
   return array;
-  }();
+}();
 template<typename T>
-static constexpr clt::meta::string_view __MetaInfo_GetNameOf = { __MetaInfo_GetNameArray<T>.data(), __MetaInfo_GetNameArray<T>.size() - 1};
+static constexpr clt::meta::string_view __MetaInfo_GetNameOf = {
+    __MetaInfo_GetNameArray<T>.data(), __MetaInfo_GetNameArray<T>.size() - 1};
 
 /// @brief Returns the meta information of a pointer to a type with informations.
 /// This needs to be in the global namespace to be the last functions checked
@@ -1203,8 +1133,10 @@ constexpr auto __MetaInfo_Get(Ty)
           .name_of =
               []() noexcept
           {
-            return join_strv<__MetaInfo_GetNameOf<pointer_c>,
-                multiply_char<pointer_c::value - 1, '*'>::value>::value.data();
+            return join_strv<
+                       __MetaInfo_GetNameOf<pointer_c>,
+                       multiply_char<pointer_c::value - 1, '*'>::value>::value
+                .data();
           },
           .src = decltype(__MetaInfo_Get_static<pointer_c>)::current.src}>{};
 }
@@ -1234,10 +1166,6 @@ define_namespace(_Test_Reflect)
   // NAMESPACE:
   //////////////////////////////
   static_assert(
-      !clt::meta::is_inside_function(),
-      "Compiler is not supported due to: is_inside_function.");
-  // ^ A namespace is not a function, so is_inside_function must return false.
-  static_assert(
       clt::meta::name_of(reflect_info_of_nt(_Test_Reflect)) == "_Test_Reflect",
       "name_of namespace failed!");
   static_assert(
@@ -1249,10 +1177,6 @@ define_namespace(_Test_Reflect)
   //////////////////////////////
   define_fn((inline), void, test_inside_function)
   {
-    // We are inside a function, so is_inside_function must return true.
-    static_assert(
-        clt::meta::is_inside_function(),
-        "Compiler is not supported due to: is_inside_function.");
   }
   static_assert(
       clt::meta::name_of(reflect_info_of_nt(_Test_Reflect::test_inside_function))
@@ -1275,6 +1199,12 @@ define_namespace(_Test_Reflect)
           == "test_variable",
       "name_of variable failed!");
   static_assert(
+      std::same_as<
+          decltype(clt::meta::source_location_of(
+              reflect_info_of_nt(_Test_Reflect::test_variable))),
+          std::source_location>,
+      "source_location_of variable failed!");
+  static_assert(
       &clt::meta::entity_ref(reflect_info_of_nt(test_variable)) == &test_variable,
       "entity_ref variable failed!");
   static_assert(
@@ -1290,6 +1220,12 @@ define_namespace(_Test_Reflect)
   static_assert(
       clt::meta::name_of(reflect_info_of(int32_t)) == "int32_t",
       "name_of primitive type failed!");
+  static_assert(
+      std::same_as<
+          decltype(clt::meta::source_location_of(
+              reflect_info_of(int32_t))),
+          std::source_location>,
+      "source_location_of primitive type failed!");
 
   //////////////////////////////
   // VARIABLE TEMPLATE:
@@ -1301,6 +1237,12 @@ define_namespace(_Test_Reflect)
       clt::meta::name_of(reflect_info_of_nt(_Test_Reflect::test_template_variable))
           == "test_template_variable",
       "name_of variable template failed!");
+  static_assert(
+      std::same_as<
+          decltype(clt::meta::source_location_of(
+              reflect_info_of_nt(_Test_Reflect::test_template_variable))),
+          std::source_location>,
+      "source_location_of variable template failed!");
   static_assert(
       clt::meta::is_variable_template(reflect_info_of_nt(test_template_variable)),
       "is_variable_template failed!");
