@@ -3,15 +3,15 @@
  * @brief  Provides macros and functions for static reflection.
  * 
  * While nobody likes macros, they are the only way to generate static
- * reflection at compile-time (while waiting for C++26's static
+ * reflection portably at compile-time (while waiting for C++26's static
  * reflection).
  * The macros are needed to generate the info struct representing
  * the static informations.
  * FAQ:
  * 1 - Why is there two macros to get the informations?
  *   - (reflect_info_of and reflect_info_of_nt)
- * 1 > To reflect on namespaces and aliases, we need to have
- *   > informations about the entity stored somewhere.
+ * 1 > To reflect on an entity, we need to have
+ *   > informations about that entity stored somewhere.
  *   > A static constexpr variable that is partially specialized
  *   > cannot be specialized outside of its namespace...
  *   > We need to find another solution: functions!
@@ -575,8 +575,13 @@
 
 namespace clt::meta
 {
+  /// @brief Pops the first element of a tuple and returns the rest
+  /// @tparam T The first element
+  /// @tparam ...Ts The rest
+  /// @param tuple The tuple to convert
+  /// @return 'tuple' without the first element
   template<typename T, typename... Ts>
-  consteval auto tuple_without_1st(const std::tuple<T, Ts...>&)
+  consteval auto tuple_without_1st(const std::tuple<T, Ts...>& tuple)
   {
     return std::tuple<Ts...>{};
   }
@@ -727,7 +732,7 @@ namespace clt::meta
   };
 
   /// @brief The kind of the reflection
-  enum class Kind : uint32_t
+  enum class Kind : uint8_t
   {
     _error,
 
@@ -855,10 +860,10 @@ namespace clt::meta
     static constexpr auto value = V;
     /// @brief The current informations
     static constexpr auto current = CURRENT;
-    /// @brief This field is only useful if
+    /// @brief The aliased type info (only useful if is_alias)
     static constexpr auto alias_info = ALIAS;
-    /// @brief The arguments informations for functions
-    using arguments_type = ARGS;
+    /// @brief The return info followed by arguments info (only useful if is_function)
+    using return_and_args = ARGS;
     /// @brief Helper to detect a valid info
     static constexpr bool __Is_Meta_Info = true;
   };
@@ -1065,7 +1070,9 @@ namespace clt::meta
   consteval auto arguments_of(meta_info_ref auto func) noexcept
   {
     static_assert(is_function(func), "Expected function information!");
-    return tuple_without_1st(typename decltype(func)::arguments_type{});
+    // return_and_args contains the return type followed by the arguments
+    // so we need to skip the 1st
+    return tuple_without_1st(typename decltype(func)::return_and_args{});
   }
   /// @brief Returns the information representing the return type of a function
   /// @param func The function's information
@@ -1073,7 +1080,9 @@ namespace clt::meta
   consteval auto return_of(meta_info_ref auto func) noexcept
   {
     static_assert(is_function(func), "Expected function information!");
-    return std::get<0>(typename decltype(func)::arguments_type{});
+    // return_and_args contains the return type followed by the arguments
+    // so we need to return the 1st
+    return std::get<0>(typename decltype(func)::return_and_args{});
   }
 
   /// @brief Returns the value of a constant value
