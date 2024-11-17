@@ -737,21 +737,21 @@ namespace clt::meta
     _error,
 
     /// @brief Non-templated variable
-    _var,
+    _var, // done
     /// @brief Non-templated using
-    _alias,
+    _alias, // done
     /// @brief Non-templated function
-    _fn,
+    _fn, // done
     /// @brief Non-templated method
     _method,
     /// @brief Non-templated type
-    _type,
+    _type, // done (-custom types)
     /// @brief Static Data Member
     _sdm,
     /// @brief Templated variable
-    _template_var,
+    _template_var, // done (-to_string)
     /// @brief Templated using
-    _template_alias,
+    _template_alias, // done (-to_string)
     /// @brief Templated function
     _template_fn,
     /// @brief Templated method
@@ -763,9 +763,9 @@ namespace clt::meta
     /// @brief Non-Static Data Member
     _nsdm,
     /// @brief Constant Value
-    _constant_value,
+    _constant_value, // done (-to_string)
     /// @brief Namespace Description
-    _namespace,
+    _namespace, // done
     __End_marker
   };
 
@@ -1230,6 +1230,10 @@ namespace clt::meta
     static constexpr clt::meta::string_view static_name_of = {
         static_name_array<T>.data(), static_name_array<T>.size() - 1};
 
+    template<clt::meta::meta_info T>
+    static constexpr clt::meta::string_view static_name_of_type_of =
+        static_name_of<decltype(reflect_info_of(reflect_type_of(T{})))>;
+
     template<auto STR_PRODUCER>
     static constexpr auto static_name_producer_array = []()
     {
@@ -1262,9 +1266,8 @@ constexpr auto __MetaInfo_Get(Ty)
   using namespace clt::meta::details;
   using pointer_c = remove_all_pointers<Ty>;
 
-  using info_                = decltype(static_meta_info_of<pointer_c>);
-  using type_                = typename info_::type;
-  constexpr auto& name_array = static_name_of<info_>;
+  using info_ = decltype(static_meta_info_of<pointer_c>);
+  using type_ = typename info_::type;
   return info<
       add_N_pointers_t<typename pointer_c::type, pointer_c::value - 1>,
       clt::meta::no_value,
@@ -1297,6 +1300,141 @@ constexpr auto __MetaInfo_Get(Ty)
   return {};
 }
 
+namespace clt::meta
+{
+  // PREDEFINED META FUNCTIONS:
+
+  namespace details
+  {
+    template<meta_info_ref... Ts, size_t... Index>
+    constexpr auto tupled(
+        meta_info_ref auto fn, const std::tuple<Ts...>&,
+        std::index_sequence<Index...>) noexcept
+    {
+      // To propagate info to lambda, we make use of types
+      using Info = decltype(fn);
+      return []<typename Tuple>(Tuple&& tuple)
+        requires std::convertible_to<size_t, decltype(std::tuple_size_v<Tuple>)>
+      {
+        return entity_ref(Info{})(std::forward<decltype(std::get<Index>(tuple))>(
+            std::get<Index>(tuple))...);
+      };
+    }
+
+    template<typename Callable, meta_info... Args, size_t... Index>
+    constexpr void for_each(
+        const std::tuple<Args...>& arg, Callable&& callable,
+        std::index_sequence<Index...>)
+    {
+      (callable(std::get<Index>(arg)), ...);
+    }
+
+    template<typename args, size_t... Index>
+    constexpr const char* to_string_function(std::index_sequence<Index...>)
+    {
+      // This function is a workaround for Clang, which for some reason
+      // was crashing if the code was in a lambda. I hate internal
+      // compiler errors.
+
+      // Some of the ugliest code I ever wrote.
+      // The pack expansion acts as a loop over the arguments.
+      // A single argument is:
+      // join_strv<TYPE_NAME, " ", ARGUMENT_NAME, IS LAST ARG ? "" : ", ">
+      // We concatenate all the arguments together to form the string
+      return join_strv<join_strv<
+          details::static_name_of_type_of<
+              std::remove_cvref_t<decltype(std::get<Index>(args{}))>>,
+          details::static_name_producer_of<[]() constexpr { return " "; }>,
+          details::static_name_of<
+              std::remove_cvref_t<decltype(std::get<Index>(args{}))>>,
+          details::static_name_producer_of<[]() constexpr {
+            return Index == sizeof...(Index) - 1 ? "" : ", ";
+          }>>::value...>::value.data();
+    }
+  } // namespace details
+
+  /// @brief Returns the same function as 'fn' with the difference that all the arguments are passed as
+  /// a single tuple.
+  /// @param fn The function information from which to generate the new function
+  /// @return Function that takes all the arguments
+  constexpr auto to_tupled(meta_info_ref auto fn) noexcept
+  {
+    static_assert(is_function(fn), "Expected a function!");
+    constexpr auto tuple = arguments_of(fn);
+    return details::tupled(
+        fn, tuple, std::make_index_sequence<std::tuple_size_v<decltype(tuple)>>{});
+  }
+
+  /// @brief Returns a C++-like string representing an information.
+  /// @param info The meta-info to convert
+  /// @return A C++-like string representing 'info'
+  consteval std::string_view to_string(meta_info_ref auto info) noexcept
+  {
+    if constexpr (is_namespace(info))
+    {
+      return join_strv<
+          details::static_name_producer_of<[]() { return "namespace "; }>,
+          details::static_name_of<decltype(info)>>::value;
+    }
+    else if constexpr (is_value(info))
+    {
+      return details::static_name_of<decltype(info)>;
+    }
+    else if constexpr (is_alias(info))
+    {
+      return join_strv<
+          details::static_name_producer_of<[]() { return "using "; }>,
+          details::static_name_of<decltype(info)>,
+          details::static_name_producer_of<[]() { return " = "; }>,
+          details::static_name_of<decltype(entity_of(decltype(info){}))>>::value;
+    }
+    else if constexpr (is_variable(info))
+    {
+      return join_strv<
+          details::static_name_of<decltype(reflect_info_of(reflect_type_of(info)))>,
+          details::static_name_producer_of<[]() { return " "; }>,
+          details::static_name_of<decltype(info)>>::value;
+    }
+    else if constexpr (is_function(info))
+    {
+      using args = decltype(arguments_of(info));
+      return join_strv<
+          details::static_name_of<decltype(reflect_info_of(
+              reflect_type_of(return_of(info))))>,
+          details::static_name_producer_of<[]() constexpr { return " "; }>,
+          details::static_name_of<decltype(info)>,
+          details::static_name_producer_of<[]() constexpr { return "("; }>,
+          details::static_name_producer_of<
+              []() constexpr
+              {
+                return details::to_string_function<args>(
+                    std::make_index_sequence<std::tuple_size_v<args>>{});
+              }>,
+          details::static_name_producer_of<[]() { return ")"; }>>::value;
+    }
+    else if constexpr (is_type(info))
+    {
+      return join_strv<details::static_name_of<decltype(reflect_info_of(
+          reflect_type_of(info)))>>::value;
+    }
+    else
+      static_assert(always_false<decltype(info)>, "Not implemented!");
+  }
+
+  /// @brief Applies a lambda for each information in a tuple
+  /// @tparam Callable The lambda to apply on each members of the tuple
+  /// @tparam ...Args The tuple arguments
+  /// @param tuple The tuple whose members to pass to 'callable'
+  /// @param callable The lambda to apply on each member of 'tuple'
+  template<typename Callable, meta_info... Args>
+  constexpr void for_each(const std::tuple<Args...>& tuple, Callable&& callable)
+  {
+    details::for_each(
+        tuple, std::forward<Callable>(callable),
+        std::make_index_sequence<sizeof...(Args)>{});
+  }
+} // namespace clt::meta
+
 #pragma region TESTS
 // If REFLECT_NO_SELF_TEST is not defined, some checks are run
 // to ensure that the library is working correctly.
@@ -1313,12 +1451,17 @@ define_namespace(_Test_Reflect)
   static_assert(
       clt::meta::is_namespace(reflect_info_of_nt(_Test_Reflect)),
       "is_namespace failed!");
+  static_assert(
+      clt::meta::to_string(reflect_info_of_nt(_Test_Reflect))
+          == "namespace _Test_Reflect",
+      "to_string namespace failed!");
 
   //////////////////////////////
   // FUNCTION:
   //////////////////////////////
-  define_fn((inline), void, test_inside_function)
+  define_fn((inline), void, test_inside_function, (int32_t, a), (int32_t, b))
   {
+    // Does nothing
   }
   static_assert(
       clt::meta::name_of(reflect_info_of_nt(_Test_Reflect::test_inside_function))
@@ -1331,11 +1474,15 @@ define_namespace(_Test_Reflect)
   static_assert(
       clt::meta::is_function(reflect_info_of_nt(test_inside_function)),
       "is_function function failed!");
+  static_assert(
+      clt::meta::to_string(reflect_info_of_nt(test_inside_function))
+          == "void test_inside_function(int32_t a, int32_t b)",
+      "to_string function failed!");
 
   //////////////////////////////
   // VARIABLE:
   //////////////////////////////
-  define_var((static, constexpr), int, test_variable, 10);
+  define_var((static, constexpr), int32_t, test_variable, 10);
   static_assert(
       clt::meta::name_of(reflect_info_of_nt(_Test_Reflect::test_variable))
           == "test_variable",
@@ -1352,6 +1499,10 @@ define_namespace(_Test_Reflect)
   static_assert(
       clt::meta::is_variable(reflect_info_of_nt(test_variable)),
       "is_variable failed!");
+  static_assert(
+      clt::meta::to_string(reflect_info_of_nt(test_variable))
+          == "int32_t test_variable",
+      "to_string variable failed!");
 
   //////////////////////////////
   // PRIMITIVE TYPE:
@@ -1447,81 +1598,5 @@ define_namespace(_Test_Reflect)
 
 #endif // SELF_TEST_REFLECT
 #pragma endregion
-
-namespace clt::meta
-{
-  // PREDEFINED META FUNCTIONS:
-
-  namespace details
-  {
-    template<meta_info_ref... Ts, size_t... Index>
-    constexpr auto tupled(
-        meta_info_ref auto fn, const std::tuple<Ts...>& tuple,
-        std::index_sequence<Index...>) noexcept
-    {
-      // To propagate info to lambda, we make use of types
-      using Info = decltype(fn);
-      // + to decay lambda into pointer
-      return +[](const std::tuple<type_of<Ts>...>& tuple)
-      { return entity_ref(Info{})(std::get<Index>(tuple)...); };
-    }
-
-    template<typename Callable, meta_info... Args, size_t... Index>
-    constexpr void for_each(
-        const std::tuple<Args...>& arg, Callable&& callable,
-        std::index_sequence<Index...>)
-    {
-      (callable(std::get<Index>(arg)), ...);
-    }
-  } // namespace details
-
-  /// @brief Returns the same function as 'fn' with the difference that all the arguments are passed as
-  /// a single tuple.
-  /// @param fn The function information from which to generate the new function
-  /// @return Function that takes all the arguments
-  constexpr auto to_tupled(meta_info_ref auto fn) noexcept
-  {
-    static_assert(is_function(fn), "Expected a function!");
-    constexpr auto tuple = arguments_of(fn);
-    return details::tupled(
-        fn, tuple, std::make_index_sequence<std::tuple_size_v<decltype(tuple)>>{});
-  }
-
-  /// @brief Returns a C++-like string representing an information.
-  /// @param info The meta-info to convert
-  /// @return A C++-like string representing 'info'
-  consteval std::string_view to_string(meta_info_ref auto info) noexcept
-  {
-    if constexpr (is_namespace(info))
-    {
-      return join_strv<
-          details::static_name_producer_of<[]() { return "namespace "; }>,
-          details::static_name_of<decltype(info)>>::value;
-    }
-    else if constexpr (is_alias(info))
-    {
-      return join_strv<
-          details::static_name_producer_of<[]() { return "using "; }>,
-          details::static_name_of<decltype(info)>,
-          details::static_name_producer_of<[]() { return " = "; }>,
-          details::static_name_of<decltype(entity_of(decltype(info){}))>>::value;
-    }
-    else
-      static_assert(always_false<decltype(info)>, "Not implemented!");
-  }
-
-  /// @brief Applies a lambda for each information in a tuple
-  /// @tparam Callable The lambda to apply on each members of the tuple
-  /// @tparam ...Args The tuple arguments
-  /// @param tuple The tuple whose members to pass to 'callable'
-  /// @param callable The lambda to apply on each member of 'tuple'
-  template<typename Callable, meta_info... Args>
-  constexpr void for_each(const std::tuple<Args...>& tuple, Callable&& callable)
-  {
-    details::for_each(
-        tuple, std::forward<Callable>(callable),
-        std::make_index_sequence<sizeof...(Args)>{});
-  }
-} // namespace clt::meta
 
 #endif // !HG_REFLECT__
