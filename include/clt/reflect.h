@@ -46,6 +46,7 @@
 #include <tuple>
 #include <source_location>
 #include <string_view>
+#include <optional>
 
 #pragma region UGLY MACROS
 /// @brief Concatenate internal (use __REFL_CC!!)
@@ -217,6 +218,8 @@
 #pragma region DEFINE_MACROS
 /// @brief If x is wrapped in parenthesis, removes them
 #define __REFL_deparen(x) __REFL_ESC(__REFL_ISH x)
+/// @brief If x is wrapped in parenthesis, does nothing, else adds parenthesis
+#define __REFL_addparen(x) (__REFL_ESC(__REFL_ISH x))
 /// @brief Add at the end of a macro to require a semicolon
 #define __REFL_macro_needs_semicolon() static_assert(true)
 
@@ -229,9 +232,9 @@
   static constexpr auto __REFL_CC(name, __MetaInfo_) = clt::meta::info<       \
       name, clt::meta::no_value,                                              \
       clt::meta::basic_info{                                                  \
-          .kind    = clt::meta::Kind::_alias,                                 \
-          .name_of = []() noexcept { return #name; },                         \
-          .src     = []() noexcept { return std::source_location::current(); }},  \
+          .kind          = clt::meta::Kind::_alias,                           \
+          .identifier_of = []() noexcept { return #name; },                   \
+          .src = []() noexcept { return std::source_location::current(); }},  \
       decltype(__MetaInfo_Get(static_cast<value*>(nullptr)))::current>        \
   {                                                                           \
   }
@@ -272,9 +275,9 @@
     return clt::meta::info<                                                       \
         name, clt::meta::no_value,                                                \
         clt::meta::basic_info{                                                    \
-            .kind    = clt::meta::Kind::_type,                                    \
-            .name_of = []() noexcept { return #name; },                           \
-            .src     = []() noexcept { return std::source_location::current(); }}>{}; \
+            .kind          = clt::meta::Kind::_type,                              \
+            .identifier_of = []() noexcept { return #name; },                     \
+            .src = []() noexcept { return std::source_location::current(); }}>{}; \
   }
 
 /// @brief Identity function (which returns its argument)
@@ -550,6 +553,53 @@
   __REFL_expand_specifier pack __REFL_deparen(return_type)                         \
       name(REFLECT_FOR_EACH_COMMA(__REFL_fn_arguments_expansion, __VA_ARGS__))
 
+#define __REFL_overload2(_1, _2, NAME, ...) NAME
+
+#define __REFL_expand_enum1(a)    a,
+#define __REFL_expand_enum2(a, b) a = b,
+#define __REFL_expand_enum(...)                                            \
+  __REFL_overload2(__VA_ARGS__, __REFL_expand_enum2, __REFL_expand_enum1)( \
+      __VA_ARGS__)
+#define __REFL_expand_enum_overload(x) __REFL_expand_enum __REFL_addparen(x)
+#define __REFL_expand_enums(...) \
+  REFLECT_FOR_EACH(__REFL_expand_enum_overload, __VA_ARGS__)
+
+#define __REFL_expand_enum_info1(a)                                       \
+  clt::meta::info<                                                        \
+      decltype(a), a,                                                     \
+      clt::meta::basic_info{                                              \
+          clt::meta::Kind::_constant_value, []() noexcept { return #a; }, \
+          []() noexcept { return std::source_location::current(); }}>
+#define __REFL_expand_enum_info2(a, b)                                    \
+  clt::meta::info<                                                        \
+      decltype(a), a,                                                     \
+      clt::meta::basic_info{                                              \
+          clt::meta::Kind::_constant_value, []() noexcept { return #a; }, \
+          []() noexcept { return std::source_location::current(); }}>
+#define __REFL_expand_enum_info(...) \
+  __REFL_overload2(                  \
+      __VA_ARGS__, __REFL_expand_enum_info2, __REFL_expand_enum_info1)(__VA_ARGS__)
+#define __REFL_expand_enum_info_overload(x) \
+  __REFL_expand_enum_info __REFL_addparen(x)
+#define __REFL_expand_enums_info(...) \
+  std::tuple<REFLECT_FOR_EACH_COMMA(__REFL_expand_enum_info_overload, __VA_ARGS__)>
+
+#define define_enum_class(name, type, ...)                                 \
+  enum class name : type                                                   \
+  {                                                                        \
+    __REFL_expand_enums(__VA_ARGS__)                                       \
+  };                                                                       \
+  static constexpr auto __REFL_CC(name, __MetaInfo_) = []()                \
+  {                                                                        \
+    using enum name;                                                       \
+    return clt::meta::info<                                                \
+        name, clt::meta::no_value,                                         \
+        clt::meta::basic_info{                                             \
+            clt::meta::Kind::_enum, []() noexcept { return #name; },       \
+            []() noexcept { return std::source_location::current(); }},    \
+        clt::meta::basic_info{}, __REFL_expand_enums_info(__VA_ARGS__)>{}; \
+  }()
+
 /// @brief Returns the information of a type (or an alias)
 #define reflect_info_of(name)                                       \
   (                                                                 \
@@ -581,7 +631,7 @@ namespace clt::meta
   /// @param tuple The tuple to convert
   /// @return 'tuple' without the first element
   template<typename T, typename... Ts>
-  consteval auto tuple_without_1st(const std::tuple<T, Ts...>& tuple)
+  consteval auto tuple_without_1st(const std::tuple<T, Ts...>& tuple) noexcept
   {
     return std::tuple<Ts...>{};
   }
@@ -629,14 +679,14 @@ namespace clt::meta
     /// @tparam N The size of the literal
     /// @param str The string literal
     template<std::size_t N>
-    constexpr string_view(const char (&str)[N])
+    constexpr string_view(const char (&str)[N]) noexcept
         : data_(str)
         , size_(N - 1)
     {
     }
     /// @brief Constructor
     /// @param strv The string view to copy
-    constexpr string_view(std::string_view strv)
+    constexpr string_view(std::string_view strv) noexcept
         : data_(strv.data())
         , size_(strv.size())
     {
@@ -736,6 +786,8 @@ namespace clt::meta
   {
     _error,
 
+    /// @brief Enumerator
+    _enum,
     /// @brief Non-templated variable
     _var, // done
     /// @brief Non-templated using
@@ -763,7 +815,7 @@ namespace clt::meta
     /// @brief Non-Static Data Member
     _nsdm,
     /// @brief Constant Value
-    _constant_value, // done (-to_string)
+    _constant_value, // done
     /// @brief Namespace Description
     _namespace, // done
     __End_marker
@@ -830,7 +882,7 @@ namespace clt::meta
     /// @brief The kind of the reflection
     Kind kind = Kind::_error;
     /// @brief The name of the reflection (unqualified)
-    str_producer_t name_of = nullptr;
+    str_producer_t identifier_of = nullptr;
     /// @brief The source location of the reflection
     loc_producer_t src = nullptr;
     /// @brief The specifiers or __End_marker if none
@@ -842,7 +894,7 @@ namespace clt::meta
     /// @return Copy with kind = kind_remove_template(kind)
     constexpr basic_info remove_template() const noexcept
     {
-      return {kind_remove_template(kind), name_of, src, specifier, visibility};
+      return {kind_remove_template(kind), identifier_of, src, specifier, visibility};
     }
   };
 
@@ -864,6 +916,8 @@ namespace clt::meta
     static constexpr auto alias_info = ALIAS;
     /// @brief The return info followed by arguments info (only useful if is_function)
     using return_and_args = ARGS;
+    /// @brief The enumerators of the enum (only useful if is_enumerator)
+    using enumerators = ARGS;
     /// @brief Helper to detect a valid info
     static constexpr bool __Is_Meta_Info = true;
   };
@@ -900,6 +954,8 @@ namespace clt::meta
   consteval auto is_override(meta_info_ref auto entity) noexcept -> bool;
   consteval auto is_pure_virtual(meta_info_ref auto entity) noexcept -> bool;
   /// @brief Check if the entity is marked constexpr.
+  /// This does not ensure that the entity can be used at compile-time,
+  /// only that it was declared constexpr.
   /// @param entity The entity (representing a function or variable)
   /// @return True if the entity is marked constexpr
   consteval auto is_constexpr(meta_info_ref auto entity) noexcept -> bool
@@ -930,6 +986,10 @@ namespace clt::meta
   }
 
   //constexpr auto is_base(meta_info_ref auto entity) -> bool;
+  consteval auto is_enumerator(meta_info_ref auto entity) noexcept -> bool
+  {
+    return decltype(entity)::current.kind == Kind::_enum;
+  }
   consteval auto is_nsdm(meta_info_ref auto entity) noexcept -> bool
   {
     return decltype(entity)::current.kind == Kind::_nsdm;
@@ -1008,9 +1068,10 @@ namespace clt::meta
   /// @brief Returns the name of the entity
   /// @param entity The entity
   /// @return The name of the entity
-  constexpr auto name_of(meta_info_ref auto entity) noexcept -> std::string_view
+  constexpr auto identifier_of(meta_info_ref auto entity) noexcept
+      -> std::string_view
   {
-    return decltype(entity)::current.name_of();
+    return decltype(entity)::current.identifier_of();
   }
 
   /// @brief Returns the source location of an entity
@@ -1037,10 +1098,10 @@ namespace clt::meta
   /// @brief Returns the type represented by an info.
   /// This is the same nearly the same as reflect_type_of macro.
   template<meta_info_ref T>
-  using type_of = std::remove_pointer_t<decltype([]<typename>() {
+  using type_of = std::remove_pointer_t<decltype([]() {
       static_assert(clt::meta::meta_info<std::remove_cvref_t<T>>, "Type does represent a meta info!");
       static_assert(!std::same_as<clt::meta::no_type, typename std::remove_cvref_t<T>::type>, "meta info does not represent a type!");
-      return std::add_pointer_t<typename std::remove_cvref_t<T>::type>{}; }.template operator()<int>())>;
+      return std::add_pointer_t<typename std::remove_cvref_t<T>::type>{}; }())>;
 
   /// @brief Instantiates a templated value using 'with'
   /// @tparam ...With The argument pack
@@ -1083,6 +1144,16 @@ namespace clt::meta
     // return_and_args contains the return type followed by the arguments
     // so we need to return the 1st
     return std::get<0>(typename decltype(func)::return_and_args{});
+  }
+  /// @brief Returns the enumerators of an enum
+  /// @param enumerator The enum whose enumerator values to return
+  /// @return Tuple of enumerator values informations
+  consteval auto enumerators_of(meta_info_ref auto enumerator) noexcept
+  {
+    static_assert(is_enumerator(enumerator), "Expected enumerator information!");
+    // return_and_args contains the return type followed by the arguments
+    // so we need to skip the 1st
+    return typename decltype(enumerator)::enumerators{};
   }
 
   /// @brief Returns the value of a constant value
@@ -1129,7 +1200,7 @@ define_primitive_type(long double);
 /// @tparam Ty The type
 /// @return Always false
 template<typename Ty>
-constexpr auto __MetaInfo_Reflectable(Ty*) -> bool
+constexpr auto __MetaInfo_Reflectable(Ty*) noexcept -> bool
 {
   return false;
 }
@@ -1216,26 +1287,26 @@ namespace clt::meta
         __MetaInfo_Get(std::add_pointer_t<std::add_const_t<typename T::type>>{});
 
     template<clt::meta::meta_info type>
-    static constexpr auto static_name_array = []()
+    static constexpr auto static_name_array = []() noexcept
     {
-      constexpr size_t size = clt::meta::const_strlen(type::current.name_of());
+      constexpr size_t size = clt::meta::const_strlen(type::current.identifier_of());
       std::array<char, size + 1> array;
       for (size_t i = 0; i < size; i++)
-        array[i] = type::current.name_of()[i];
+        array[i] = type::current.identifier_of()[i];
       array[size] = '\0';
       return array;
     }();
 
     template<clt::meta::meta_info T>
-    static constexpr clt::meta::string_view static_name_of = {
+    static constexpr clt::meta::string_view static_identifier_of = {
         static_name_array<T>.data(), static_name_array<T>.size() - 1};
 
     template<clt::meta::meta_info T>
-    static constexpr clt::meta::string_view static_name_of_type_of =
-        static_name_of<decltype(reflect_info_of(reflect_type_of(T{})))>;
+    static constexpr clt::meta::string_view static_identifier_of_type_of =
+        static_identifier_of<decltype(reflect_info_of(reflect_type_of(T{})))>;
 
     template<auto STR_PRODUCER>
-    static constexpr auto static_name_producer_array = []()
+    static constexpr auto static_name_producer_array = []() noexcept
     {
       constexpr size_t size = clt::meta::const_strlen(STR_PRODUCER());
       std::array<char, size + 1> array;
@@ -1260,7 +1331,7 @@ namespace clt::meta
 /// @tparam Ty The type (which is a N pointer indirection to a reflectable type)
 /// @return Information describing that type
 template<clt::meta::pointer_reflectable Ty>
-constexpr auto __MetaInfo_Get(Ty)
+constexpr auto __MetaInfo_Get(Ty) noexcept
 {
   using namespace clt::meta;
   using namespace clt::meta::details;
@@ -1273,12 +1344,12 @@ constexpr auto __MetaInfo_Get(Ty)
       clt::meta::no_value,
       basic_info{
           .kind = Kind::_type,
-          .name_of =
+          .identifier_of =
               []() noexcept
           {
             // Add missing pointers to type name
             return join_strv<
-                       static_name_of<info_>,
+                       static_identifier_of<info_>,
                        multiply_char<pointer_c::value - 1, '*'>::value>::value
                 .data();
           },
@@ -1291,7 +1362,7 @@ constexpr auto __MetaInfo_Get(Ty)
 /// @tparam Ty The type (which does not provide informations)
 /// @return No return
 template<typename Ty>
-constexpr auto __MetaInfo_Get(Ty)
+constexpr auto __MetaInfo_Get(Ty) noexcept
     -> clt::meta::info<Ty, clt::meta::no_value, clt::meta::basic_info{}>
 {
   static_assert(
@@ -1330,7 +1401,7 @@ namespace clt::meta
     }
 
     template<typename args, size_t... Index>
-    constexpr const char* to_string_function(std::index_sequence<Index...>)
+    constexpr const char* to_string_function(std::index_sequence<Index...>) noexcept
     {
       // This function is a workaround for Clang, which for some reason
       // was crashing if the code was in a lambda. I hate internal
@@ -1342,14 +1413,33 @@ namespace clt::meta
       // join_strv<TYPE_NAME, " ", ARGUMENT_NAME, IS LAST ARG ? "" : ", ">
       // We concatenate all the arguments together to form the string
       return join_strv<join_strv<
-          details::static_name_of_type_of<
+          details::static_identifier_of_type_of<
               std::remove_cvref_t<decltype(std::get<Index>(args{}))>>,
           details::static_name_producer_of<[]() constexpr { return " "; }>,
-          details::static_name_of<
+          details::static_identifier_of<
               std::remove_cvref_t<decltype(std::get<Index>(args{}))>>,
           details::static_name_producer_of<[]() constexpr {
             return Index == sizeof...(Index) - 1 ? "" : ", ";
           }>>::value...>::value.data();
+    }
+
+    template<typename EnumT, meta_info... Args>
+    constexpr auto enum_to_string(const std::tuple<Args...>&) noexcept
+    {
+      // Take address of function and dereference it to return a
+      // function
+      return *+[](EnumT to_cnv)
+      {
+        std::optional<std::string_view> ret;
+        // Ugly-smart way of generating a switch. The compiler should optimize this.
+        // TODO: improve as it appears that only clang is optimizing this code well
+        // We use make use of the short-circuit behavior to 'break' out
+        // of the chain of ifs.
+        (void)((to_cnv == value_of(Args{}) ? ret = identifier_of(Args{}),
+                true                       : false)
+               || ...);
+        return ret;
+      };
     }
   } // namespace details
 
@@ -1365,62 +1455,6 @@ namespace clt::meta
         fn, tuple, std::make_index_sequence<std::tuple_size_v<decltype(tuple)>>{});
   }
 
-  /// @brief Returns a C++-like string representing an information.
-  /// @param info The meta-info to convert
-  /// @return A C++-like string representing 'info'
-  consteval std::string_view to_string(meta_info_ref auto info) noexcept
-  {
-    if constexpr (is_namespace(info))
-    {
-      return join_strv<
-          details::static_name_producer_of<[]() { return "namespace "; }>,
-          details::static_name_of<decltype(info)>>::value;
-    }
-    else if constexpr (is_value(info))
-    {
-      return details::static_name_of<decltype(info)>;
-    }
-    else if constexpr (is_alias(info))
-    {
-      return join_strv<
-          details::static_name_producer_of<[]() { return "using "; }>,
-          details::static_name_of<decltype(info)>,
-          details::static_name_producer_of<[]() { return " = "; }>,
-          details::static_name_of<decltype(entity_of(decltype(info){}))>>::value;
-    }
-    else if constexpr (is_variable(info))
-    {
-      return join_strv<
-          details::static_name_of<decltype(reflect_info_of(reflect_type_of(info)))>,
-          details::static_name_producer_of<[]() { return " "; }>,
-          details::static_name_of<decltype(info)>>::value;
-    }
-    else if constexpr (is_function(info))
-    {
-      using args = decltype(arguments_of(info));
-      return join_strv<
-          details::static_name_of<decltype(reflect_info_of(
-              reflect_type_of(return_of(info))))>,
-          details::static_name_producer_of<[]() constexpr { return " "; }>,
-          details::static_name_of<decltype(info)>,
-          details::static_name_producer_of<[]() constexpr { return "("; }>,
-          details::static_name_producer_of<
-              []() constexpr
-              {
-                return details::to_string_function<args>(
-                    std::make_index_sequence<std::tuple_size_v<args>>{});
-              }>,
-          details::static_name_producer_of<[]() { return ")"; }>>::value;
-    }
-    else if constexpr (is_type(info))
-    {
-      return join_strv<details::static_name_of<decltype(reflect_info_of(
-          reflect_type_of(info)))>>::value;
-    }
-    else
-      static_assert(always_false<decltype(info)>, "Not implemented!");
-  }
-
   /// @brief Applies a lambda for each information in a tuple
   /// @tparam Callable The lambda to apply on each members of the tuple
   /// @tparam ...Args The tuple arguments
@@ -1432,6 +1466,71 @@ namespace clt::meta
     details::for_each(
         tuple, std::forward<Callable>(callable),
         std::make_index_sequence<sizeof...(Args)>{});
+  }
+
+  constexpr auto enum_to_string(meta_info_ref auto enumerator) noexcept
+  {
+    static_assert(is_enumerator(enumerator), "Expected enumerator info!");
+    return details::enum_to_string<type_of<decltype(enumerator)>>(
+        enumerators_of(enumerator));
+  }
+
+  /// @brief Returns a C++-like string representing an information.
+  /// @param info The meta-info to convert
+  /// @return A C++-like string representing 'info'
+  consteval std::string_view to_string(meta_info_ref auto info) noexcept
+  {
+    if constexpr (is_namespace(info))
+    {
+      return join_strv<
+          details::static_name_producer_of<[]() { return "namespace "; }>,
+          details::static_identifier_of<decltype(info)>>::value;
+    }
+    else if constexpr (is_value(info))
+    {
+      return details::static_identifier_of<decltype(info)>;
+    }
+    else if constexpr (is_alias(info))
+    {
+      return join_strv<
+          details::static_name_producer_of<[]() { return "using "; }>,
+          details::static_identifier_of<decltype(info)>,
+          details::static_name_producer_of<[]() { return " = "; }>,
+          details::static_identifier_of<decltype(entity_of(decltype(info){}))>>::
+          value;
+    }
+    else if constexpr (is_variable(info))
+    {
+      return join_strv<
+          details::static_identifier_of<decltype(reflect_info_of(
+              reflect_type_of(info)))>,
+          details::static_name_producer_of<[]() { return " "; }>,
+          details::static_identifier_of<decltype(info)>>::value;
+    }
+    else if constexpr (is_function(info))
+    {
+      using args = decltype(arguments_of(info));
+      return join_strv<
+          details::static_identifier_of<decltype(reflect_info_of(
+              reflect_type_of(return_of(info))))>,
+          details::static_name_producer_of<[]() constexpr { return " "; }>,
+          details::static_identifier_of<decltype(info)>,
+          details::static_name_producer_of<[]() constexpr { return "("; }>,
+          details::static_name_producer_of<
+              []() constexpr
+              {
+                return details::to_string_function<args>(
+                    std::make_index_sequence<std::tuple_size_v<args>>{});
+              }>,
+          details::static_name_producer_of<[]() { return ")"; }>>::value;
+    }
+    else if constexpr (is_type(info))
+    {
+      return join_strv<details::static_identifier_of<decltype(reflect_info_of(
+          reflect_type_of(info)))>>::value;
+    }
+    else
+      static_assert(always_false<decltype(info)>, "Not implemented!");
   }
 } // namespace clt::meta
 
@@ -1446,8 +1545,8 @@ define_namespace(_Test_Reflect)
   // NAMESPACE:
   //////////////////////////////
   static_assert(
-      clt::meta::name_of(reflect_info_of_nt(_Test_Reflect)) == "_Test_Reflect",
-      "name_of namespace failed!");
+      clt::meta::identifier_of(reflect_info_of_nt(_Test_Reflect)) == "_Test_Reflect",
+      "identifier_of namespace failed!");
   static_assert(
       clt::meta::is_namespace(reflect_info_of_nt(_Test_Reflect)),
       "is_namespace failed!");
@@ -1464,9 +1563,10 @@ define_namespace(_Test_Reflect)
     // Does nothing
   }
   static_assert(
-      clt::meta::name_of(reflect_info_of_nt(_Test_Reflect::test_inside_function))
+      clt::meta::identifier_of(
+          reflect_info_of_nt(_Test_Reflect::test_inside_function))
           == "test_inside_function",
-      "name_of function failed!");
+      "identifier_of function failed!");
   static_assert(
       &clt::meta::entity_ref(reflect_info_of_nt(test_inside_function))
           == &test_inside_function,
@@ -1484,9 +1584,9 @@ define_namespace(_Test_Reflect)
   //////////////////////////////
   define_var((static, constexpr), int32_t, test_variable, 10);
   static_assert(
-      clt::meta::name_of(reflect_info_of_nt(_Test_Reflect::test_variable))
+      clt::meta::identifier_of(reflect_info_of_nt(_Test_Reflect::test_variable))
           == "test_variable",
-      "name_of variable failed!");
+      "identifier_of variable failed!");
   static_assert(
       std::same_as<
           decltype(clt::meta::source_location_of(
@@ -1511,8 +1611,8 @@ define_namespace(_Test_Reflect)
       std::same_as<int, reflect_type_of(reflect_info_of(int))>,
       "reflect_type_of primitive type failed!");
   static_assert(
-      clt::meta::name_of(reflect_info_of(int32_t)) == "int32_t",
-      "name_of primitive type failed!");
+      clt::meta::identifier_of(reflect_info_of(int32_t)) == "int32_t",
+      "identifier_of primitive type failed!");
   static_assert(
       std::same_as<
           decltype(clt::meta::source_location_of(reflect_info_of(int32_t))),
@@ -1526,9 +1626,10 @@ define_namespace(_Test_Reflect)
       (reflect_template_type(typename, T), reflect_template_value(int, V)),
       (static, constexpr), T, test_template_variable, T(3.14) + T(V));
   static_assert(
-      clt::meta::name_of(reflect_info_of_nt(_Test_Reflect::test_template_variable))
+      clt::meta::identifier_of(
+          reflect_info_of_nt(_Test_Reflect::test_template_variable))
           == "test_template_variable",
-      "name_of variable template failed!");
+      "identifier_of variable template failed!");
   static_assert(
       std::same_as<
           decltype(clt::meta::source_location_of(
@@ -1565,8 +1666,8 @@ define_namespace(_Test_Reflect)
     return (T)(0 + ... + b);
   }
   static_assert(
-      clt::meta::name_of(reflect_info_of_nt(_Test_Reflect::sum)) == "sum",
-      "name_of funtion template failed!");
+      clt::meta::identifier_of(reflect_info_of_nt(_Test_Reflect::sum)) == "sum",
+      "identifier_of funtion template failed!");
   static_assert(
       std::same_as<
           decltype(clt::meta::source_location_of(
