@@ -357,6 +357,7 @@
 /// @brief Reflect on a constant value
 /// Due to a limitation of local classes, the value must be
 /// a literal type that can be passed as a template parameter
+/// TODO: the string must be stripped till after ::
 #define reflect_info_of_const(value)                                          \
   clt::meta::info<                                                            \
       decltype(value), value,                                                 \
