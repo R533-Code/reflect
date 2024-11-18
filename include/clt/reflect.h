@@ -564,6 +564,22 @@
 #define __REFL_expand_enums(...) \
   REFLECT_FOR_EACH(__REFL_expand_enum_overload, __VA_ARGS__)
 
+#define __REFL_expand_enum_switch1(a) \
+case a:                               \
+  return callable(__REFL_expand_enum_info1(a){});
+
+#define __REFL_expand_enum_switch2(a, b) \
+case a:                                  \
+  return callable(__REFL_expand_enum_info1(a){});
+#define __REFL_expand_enum_switch(...)         \
+  __REFL_overload2(                            \
+      __VA_ARGS__, __REFL_expand_enum_switch2, \
+      __REFL_expand_enum_switch1)(__VA_ARGS__)
+#define __REFL_expand_enum_switch_overload(x) \
+  __REFL_expand_enum_switch __REFL_addparen(x)
+#define __REFL_expand_enums_switch(...) \
+  REFLECT_FOR_EACH(__REFL_expand_enum_switch_overload, __VA_ARGS__)
+
 #define __REFL_expand_enum_info1(a)                                       \
   clt::meta::info<                                                        \
       decltype(a), a,                                                     \
@@ -589,6 +605,17 @@
   {                                                                        \
     __REFL_expand_enums(__VA_ARGS__)                                       \
   };                                                                       \
+  template<typename Callable, typename Ret>                                \
+  constexpr auto __MetaInfo_EnumSwitch(                                    \
+      name val, Callable&& callable, Ret&& def) noexcept                   \
+  {                                                                        \
+    using enum name;                                                       \
+    switch (val)                                                           \
+    {                                                                      \
+      __REFL_expand_enums_switch(__VA_ARGS__) default                      \
+          : return std::forward<Ret>(def);                                 \
+    };                                                                     \
+  }                                                                        \
   static constexpr auto __REFL_CC(name, __MetaInfo_) = []()                \
   {                                                                        \
     using enum name;                                                       \
@@ -1471,8 +1498,14 @@ namespace clt::meta
   constexpr auto enum_to_string(meta_info_ref auto enumerator) noexcept
   {
     static_assert(is_enumerator(enumerator), "Expected enumerator info!");
-    return details::enum_to_string<type_of<decltype(enumerator)>>(
-        enumerators_of(enumerator));
+    using enum_t = type_of<decltype(enumerator)>;
+    return *+[](enum_t value)
+    {
+      return __MetaInfo_EnumSwitch(
+          value,
+          []<meta_info_ref T>(T info) { return std::optional{identifier_of(info)}; },
+          std::optional<std::string_view>{});
+    };
   }
 
   /// @brief Returns a C++-like string representing an information.
