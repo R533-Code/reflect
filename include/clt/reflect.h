@@ -1495,6 +1495,24 @@ namespace clt::meta
         std::make_index_sequence<sizeof...(Args)>{});
   }
 
+  template<typename Callable, typename DefaultT>
+  constexpr auto switch_on_enum(
+      meta_info_ref auto enumerator, Callable&& callable, DefaultT&& default_case)
+  {
+    static_assert(is_enumerator(enumerator), "Expected enumerator info!");
+    using enum_t = type_of<decltype(enumerator)>;
+    return [&](enum_t value)
+    {
+      // ADL vvvv
+      return __MetaInfo_EnumSwitch(
+          value, std::forward<Callable>(callable),
+          std::forward<DefaultT>(default_case));
+    };
+  }
+
+  /// @brief Converts a enum to a string
+  /// @param enumerator The enum information
+  /// @return Function that takes a enum and returns an optional string view
   constexpr auto enum_to_string(meta_info_ref auto enumerator) noexcept
   {
     static_assert(is_enumerator(enumerator), "Expected enumerator info!");
