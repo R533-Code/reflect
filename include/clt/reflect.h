@@ -42,6 +42,7 @@
 #include <concepts>
 #include <type_traits>
 #include <cstdint>
+#include <cstring>
 #include <array>
 #include <tuple>
 #include <source_location>
@@ -233,7 +234,8 @@
       name, clt::meta::no_value,                                              \
       clt::meta::basic_info{                                                  \
           .kind          = clt::meta::Kind::_alias,                           \
-          .identifier_of = []() noexcept { return #name; },                   \
+          .identifier_of = []() noexcept                                      \
+          { return clt::meta::strip_namespace(#name); },                      \
           .src = []() noexcept { return std::source_location::current(); }},  \
       decltype(__MetaInfo_Get(static_cast<value*>(nullptr)))::current>        \
   {                                                                           \
@@ -256,7 +258,8 @@
   static constexpr auto __REFL_CC(name, __MetaInfo_) = clt::meta::info<  \
       clt::meta::no_type, clt::meta::no_value,                           \
       clt::meta::basic_info{                                             \
-          clt::meta::Kind::_namespace, []() noexcept { return #name; },  \
+          clt::meta::Kind::_namespace,                                   \
+          []() noexcept { return clt::meta::strip_namespace(#name); },   \
           []() noexcept { return std::source_location::current(); }}>{}; \
   namespace name
 
@@ -276,7 +279,8 @@
         name, clt::meta::no_value,                                                \
         clt::meta::basic_info{                                                    \
             .kind          = clt::meta::Kind::_type,                              \
-            .identifier_of = []() noexcept { return #name; },                     \
+            .identifier_of = []() noexcept                                        \
+            { return clt::meta::strip_namespace(#name); },                        \
             .src = []() noexcept { return std::source_location::current(); }}>{}; \
   }
 
@@ -328,7 +332,8 @@
   static constexpr auto __REFL_CC(name, __MetaInfo_) = clt::meta::info<            \
       decltype(name), &(name),                                                     \
       clt::meta::basic_info{                                                       \
-          clt::meta::Kind::_fn, []() noexcept { return #name; },                   \
+          clt::meta::Kind::_fn,                                                    \
+          []() noexcept { return clt::meta::strip_namespace(#name); },             \
           []() noexcept { return std::source_location::current(); },               \
           (clt::meta::Specifier)(__REFL_or_specifier pack)},                       \
       clt::meta::basic_info{},                                                     \
@@ -349,7 +354,8 @@
   static constexpr auto __REFL_CC(name, __MetaInfo_) = clt::meta::info<             \
       decltype(name), &(name),                                                      \
       clt::meta::basic_info{                                                        \
-          clt::meta::Kind::_var, []() noexcept { return #name; }, []() noexcept     \
+          clt::meta::Kind::_var, []() noexcept                                      \
+          { return clt::meta::strip_namespace(#name); }, []() noexcept              \
           { return std::source_location::current(); }, (__REFL_or_specifier pack)}> \
   {                                                                                 \
   }
@@ -357,15 +363,15 @@
 /// @brief Reflect on a constant value
 /// Due to a limitation of local classes, the value must be
 /// a literal type that can be passed as a template parameter
-/// TODO: the string must be stripped till after ::
-#define reflect_info_of_const(value)                                          \
-  clt::meta::info<                                                            \
-      decltype(value), value,                                                 \
-      clt::meta::basic_info{                                                  \
-          clt::meta::Kind::_constant_value, []() noexcept { return #value; }, \
-          []() noexcept { return std::source_location::current(); },          \
-          clt::meta::Specifier::_constexpr_}>                                 \
-  {                                                                           \
+#define reflect_info_of_const(value)                                    \
+  clt::meta::info<                                                      \
+      decltype(value), value,                                           \
+      clt::meta::basic_info{                                            \
+          clt::meta::Kind::_constant_value,                             \
+          []() noexcept { return clt::meta::strip_namespace(#value); }, \
+          []() noexcept { return std::source_location::current(); },    \
+          clt::meta::Specifier::_constexpr_}>                           \
+  {                                                                     \
   }
 
 // 0 -> non-type template
@@ -477,9 +483,9 @@
     static constexpr auto value =                                                  \
         &name<__REFL_expand_template_pack_name template_pack>;                     \
     static constexpr clt::meta::basic_info current = {                             \
-        clt::meta::Kind::_template_var, []() noexcept { return #name; },           \
-        []() noexcept { return std::source_location::current(); },                 \
-        (__REFL_or_specifier pack)};                                               \
+        clt::meta::Kind::_template_var,                                            \
+        []() noexcept { return clt::meta::strip_namespace(#name); }, []() noexcept \
+        { return std::source_location::current(); }, (__REFL_or_specifier pack)};  \
   } __REFL_CC(name, __MetaInfo_) = {}
 
 /// @brief Defines a templated using.
@@ -509,7 +515,8 @@
     template<__REFL_expand_template_pack template_pack>                           \
     static constexpr auto value                    = clt::meta::no_value;         \
     static constexpr clt::meta::basic_info current = {                            \
-        clt::meta::Kind::_template_alias, []() noexcept { return #name; },        \
+        clt::meta::Kind::_template_alias,                                         \
+        []() noexcept { return clt::meta::strip_namespace(#name); },              \
         []() noexcept { return std::source_location::current(); }};               \
   } __REFL_CC(name, __MetaInfo_) = {}
 
@@ -546,9 +553,9 @@
     static constexpr auto value =                                                  \
         &name<__REFL_expand_template_pack_name template_pack>;                     \
     static constexpr clt::meta::basic_info current = {                             \
-        clt::meta::Kind::_template_fn, []() noexcept { return #name; },            \
-        []() noexcept { return std::source_location::current(); },                 \
-        (__REFL_or_specifier pack)};                                               \
+        clt::meta::Kind::_template_fn,                                             \
+        []() noexcept { return clt::meta::strip_namespace(#name); }, []() noexcept \
+        { return std::source_location::current(); }, (__REFL_or_specifier pack)};  \
   } __REFL_CC(name, __MetaInfo_) = {};                                             \
   template<__REFL_expand_template_pack template_pack>                              \
   __REFL_expand_specifier pack __REFL_deparen(return_type)                         \
@@ -581,17 +588,19 @@ case a:                                  \
 #define __REFL_expand_enums_switch(...) \
   REFLECT_FOR_EACH(__REFL_expand_enum_switch_overload, __VA_ARGS__)
 
-#define __REFL_expand_enum_info1(a)                                       \
-  clt::meta::info<                                                        \
-      decltype(a), a,                                                     \
-      clt::meta::basic_info{                                              \
-          clt::meta::Kind::_constant_value, []() noexcept { return #a; }, \
+#define __REFL_expand_enum_info1(a)                                 \
+  clt::meta::info<                                                  \
+      decltype(a), a,                                               \
+      clt::meta::basic_info{                                        \
+          clt::meta::Kind::_constant_value,                         \
+          []() noexcept { return clt::meta::strip_namespace(#a); }, \
           []() noexcept { return std::source_location::current(); }}>
-#define __REFL_expand_enum_info2(a, b)                                    \
-  clt::meta::info<                                                        \
-      decltype(a), a,                                                     \
-      clt::meta::basic_info{                                              \
-          clt::meta::Kind::_constant_value, []() noexcept { return #a; }, \
+#define __REFL_expand_enum_info2(a, b)                              \
+  clt::meta::info<                                                  \
+      decltype(a), a,                                               \
+      clt::meta::basic_info{                                        \
+          clt::meta::Kind::_constant_value,                         \
+          []() noexcept { return clt::meta::strip_namespace(#a); }, \
           []() noexcept { return std::source_location::current(); }}>
 #define __REFL_expand_enum_info(...) \
   __REFL_overload2(                  \
@@ -601,6 +610,10 @@ case a:                                  \
 #define __REFL_expand_enums_info(...) \
   std::tuple<REFLECT_FOR_EACH_COMMA(__REFL_expand_enum_info_overload, __VA_ARGS__)>
 
+/// @brief Defines an enum class
+/// @code{.cpp}
+/// define_enum_class(Example, uint8_t, A, (B, 10), C);
+/// @endcode
 #define define_enum_class(name, type, ...)                                 \
   enum class name : type                                                   \
   {                                                                        \
@@ -623,7 +636,8 @@ case a:                                  \
     return clt::meta::info<                                                \
         name, clt::meta::no_value,                                         \
         clt::meta::basic_info{                                             \
-            clt::meta::Kind::_enum, []() noexcept { return #name; },       \
+            clt::meta::Kind::_enum,                                        \
+            []() noexcept { return clt::meta::strip_namespace(#name); },   \
             []() noexcept { return std::source_location::current(); }},    \
         clt::meta::basic_info{}, __REFL_expand_enums_info(__VA_ARGS__)>{}; \
   }()
@@ -653,6 +667,29 @@ case a:                                  \
 
 namespace clt::meta
 {
+  /// @brief Computes the string length of a NUL-terminated string
+  /// @param str The string whose size to return
+  /// @return The string length (not including the NUL-terminator)
+  consteval size_t const_strlen(const char* str) noexcept
+  {
+    auto cpy = str;
+    while (*str != '\0')
+      ++str;
+    return str - cpy;
+  }
+
+  /// @brief Strip the namespace from a qualified name
+  /// @param name The string to strip
+  /// @return Stripped string
+  consteval const char* strip_namespace(const char* name) noexcept
+  {
+    size_t strlen = const_strlen(name);
+    for (int i = strlen - 1; i >= 0; i--)
+      if (name[i] == ':')
+        return name + i + 1;
+    return name;
+  }
+
   /// @brief Pops the first element of a tuple and returns the rest
   /// @tparam T The first element
   /// @tparam ...Ts The rest
@@ -1291,18 +1328,7 @@ namespace clt::meta
   concept reflectable = is_reflectable.template operator()<T>();
 
   template<typename T>
-  concept pointer_reflectable = reflectable<T> && (std::is_pointer_v<T>);
-
-  /// @brief Computes the string length of a NUL-terminated string
-  /// @param str The string whose size to return
-  /// @return The string length (not including the NUL-terminator)
-  consteval size_t const_strlen(const char* str) noexcept
-  {
-    auto cpy = str;
-    while (*str != '\0')
-      ++str;
-    return str - cpy;
-  }
+  concept pointer_reflectable = reflectable<T> && (std::is_pointer_v<T>);  
 
   namespace details
   {

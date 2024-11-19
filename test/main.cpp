@@ -4,8 +4,6 @@
 
 using namespace clt::meta;
 
-define_enum_class(TesASd, uint8_t, A, (B, 10), C);
-
 define_fn((static, constexpr), int, hello, (int, a), (int, b))
 {
   return a + b;
@@ -18,8 +16,6 @@ define_fn((static, constexpr), int, hello, (int, a), (int, b))
 int main()
 {
   define_var((static), uint32_t, Hello, 10);
-
-  PRINT(*enum_to_string(reflect_info_of_nt(TesASd))(TesASd::A));
 
   constexpr auto info_hello = reflect_info_of_nt(hello);
   to_tupled(info_hello)(std::tuple{10, 20});
