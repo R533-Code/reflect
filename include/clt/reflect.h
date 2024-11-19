@@ -1477,24 +1477,6 @@ namespace clt::meta
           }>>::value...>::value.data();
     }
 
-    template<typename EnumT, meta_info... Args>
-    constexpr auto enum_to_string(const std::tuple<Args...>&) noexcept
-    {
-      // Take address of function and dereference it to return a
-      // function
-      return *+[](EnumT to_cnv)
-      {
-        std::optional<std::string_view> ret;
-        // Ugly-smart way of generating a switch. The compiler should optimize this.
-        // TODO: improve as it appears that only clang is optimizing this code well
-        // We use make use of the short-circuit behavior to 'break' out
-        // of the chain of ifs.
-        (void)((to_cnv == value_of(Args{}) ? ret = identifier_of(Args{}),
-                true                       : false)
-               || ...);
-        return ret;
-      };
-    }
   } // namespace details
 
   /// @brief Returns the same function as 'fn' with the difference that all the arguments are passed as
